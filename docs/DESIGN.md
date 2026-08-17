@@ -181,14 +181,13 @@ CREATE TABLE entry_tags (
   FOREIGN KEY (tag_id)   REFERENCES tags(id)    ON DELETE CASCADE
 );
 
-CREATE TABLE links (
-  from_id TEXT NOT NULL,
-  to_id   TEXT NOT NULL,
-  relation TEXT,
-  PRIMARY KEY (from_id, to_id),
-  FOREIGN KEY (from_id) REFERENCES entries(id) ON DELETE CASCADE,
-  FOREIGN KEY (to_id)   REFERENCES entries(id) ON DELETE CASCADE
+CREATE TABLE entry_links (
+  from_id  TEXT NOT NULL,
+  to_slug  TEXT NOT NULL,          -- 按 slug 存储而非 id：前向引用（目标未建）也能记录
+  PRIMARY KEY (from_id, to_slug),
+  FOREIGN KEY (from_id) REFERENCES entries(id) ON DELETE CASCADE
 );
+-- 反向链接查询：entry_links JOIN entries tgt ON tgt.slug = to_slug JOIN entries e ON e.id = from_id
 
 -- ── 中文全文检索：FTS5 + jieba 预分词 ──
 -- 写入时 title/content/tags 经 jieba 切词、空格连接后存入 *_tokens 列；
