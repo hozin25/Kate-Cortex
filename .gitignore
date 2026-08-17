@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.db
+*.sqlite
+
+# Node / Frontend
+node_modules/
+dist/
+frontend/dist/
+frontend/src-tauri/target/
+frontend/src-tauri/binaries/*.exe
+
+# Tauri
+target/
+*.msi
+*.dmg
+*.AppImage
+
+# Vault user data
+vault/*
+!vault/.gitkeep
+vault/.trash/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+*.log
