@@ -144,6 +144,18 @@ git commit -m "docs: project requirements, design and tech stack"
 | 4.8 | SettingsPage | Provider key / 默认模型 / RAG 默认开关 / vault 路径 / 连通测试按钮 | 4.4 |
 | 4.9 | Vitest | SuggestCard 确认流、SavedCard 渲染、流式文本追加渲染 | 4.6 |
 
+**执行记录（2026-08-18 完成阶段 4）**：
+- 前端 typecheck（node+web）与 ESLint 全绿；Vitest 6 测试通过（SuggestCard 确认/忽略流、
+  SavedCard 渲染、流式文本追加）；后端 145 测试通过
+- 偏差 1：后端补 CORS 中间件（DESIGN 未提及）——dev 期渲染进程由 vite 提供且端口可能
+  被占用顺延（5173→5176），故按正则放行本地任意端口
+- 偏差 2：electron-vite 脚手架自带 .gitignore（out/、node_modules/）已覆盖构建产物，
+  根 .gitignore 增补的 Tauri 段实为多余但无害，保留
+- 人工走查中发现并修复：glm-4-flash 对「记一下」仅口头确认不调工具（tool_calls 为空、
+  条目表无记录）→ prompts.py 记忆规则重写：记忆=必须调 save_knowledge 落库 +
+  【禁止虚假确认】；真实 GLM 复验通过（citations→tool_result→delta→done）
+- 走查进度：对话→保存链路已验证；其余项用户继续验证中
+
 **验收**（dev 模式人工走查 10 项）：新建会话→流式对话→中断→重开续聊→
 「记一下」保存卡片→建议卡片确认/忽略→RAG 开关对比→知识库过滤搜索→
 编辑条目→设置页测连通。
