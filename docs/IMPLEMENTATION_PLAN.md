@@ -41,15 +41,23 @@ git commit -m "docs: project requirements, design and tech stack"
 
 | # | 任务 | 产出 | 依赖 |
 |---|---|---|---|
-| 1.1 | 初始化 `backend/` | `pyproject.toml`（fastapi / uvicorn / pydantic / python-frontmatter / jieba / pytest / httpx / pytest-cov），`uv sync` 跑通，src 布局 | — |
-| 1.2 | `config.py` | vault / db 路径、端口；环境变量覆盖 | 1.1 |
-| 1.3 | `db.py` | **全量 schema 一次建齐**（entries / tags / entry_tags / links / entries_fts / conversations / messages / settings）+ 简易 migration（schema_version 表） | 1.2 |
-| 1.4 | `frontmatter.py` + 单测 | 解析 / 生成 / 字段校验 / roundtrip 不丢内容 | 1.1 |
-| 1.5 | `linking.py` + 单测 | `[[slug]]` 提取（跳过代码块与行内代码） | 1.1 |
-| 1.6 | `slugify.py` + 单测 | 中文→拼音（pypinyin），异常兜底时间戳，≤60 字符 | 1.1 |
-| 1.7 | `storage.py` + 单测 | 双写 CRUD、软删/恢复、id/slug 生成（当日序号自增）、`sync()` 差异扫描 | 1.3、1.4、1.6 |
-| 1.8 | `search.py` + 单测 | jieba 切词、FTS5 索引随写随更、中文查询 | 1.3 |
-| 1.9 | `routes/` + 集成测试 | entries CRUD / restore / links、tags、sync、health（httpx + 临时目录） | 1.7、1.8 |
+| ~~1.1~~ | ✅ 初始化 `backend/` | `pyproject.toml`（fastapi / uvicorn / pydantic / python-frontmatter / jieba / pytest / httpx / pytest-cov），`uv sync` 跑通，src 布局 | — |
+| ~~1.2~~ | ✅ `config.py` | vault / db 路径、端口；环境变量覆盖 | 1.1 |
+| ~~1.3~~ | ✅ `db.py` | **全量 schema 一次建齐**（entries / tags / entry_tags / entry_links / entries_fts / conversations / messages / settings）+ 简易 migration（schema_version 表） | 1.2 |
+| ~~1.4~~ | ✅ `frontmatter.py` + 单测 | 解析 / 生成 / 字段校验 / roundtrip 不丢内容 | 1.1 |
+| ~~1.5~~ | ✅ `linking.py` + 单测 | `[[slug]]` 提取（跳过代码块与行内代码） | 1.1 |
+| ~~1.6~~ | ✅ `slugify.py` + 单测 | 中文→拼音（pypinyin），异常兜底时间戳，≤60 字符 | 1.1 |
+| ~~1.7~~ | ✅ `storage.py` + 单测 | 双写 CRUD、软删/恢复、id/slug 生成（当日序号自增）、`sync()` 差异扫描 | 1.3、1.4、1.6 |
+| ~~1.8~~ | ✅ `search.py` + 单测 | jieba 切词、FTS5 索引随写随更、中文查询 | 1.3 |
+| ~~1.9~~ | ✅ `routes/` + 集成测试 | entries CRUD / restore / links、tags、sync、health（httpx + 临时目录） | 1.7、1.8 |
+
+**执行记录（2026-08-18 完成阶段 1）**：
+- 测试 88 通过，覆盖率 94%（核心模块 ≥84%）
+- 偏差 1：`links` 表改为 `entry_links(from_id, to_slug)` 按 slug 存储——否则前向引用
+  （链接指向尚未创建的条目）永远无法解析；DESIGN.md §3.3 已同步
+- 偏差 2：`uvicorn kate_cortex.main:app` 的模块级 app 通过 conftest `pytest_configure`
+  重定向数据目录，避免测试污染 dev vault
+- 冒烟脚本：`backend/tests/smoke_stage1.py`（创建→过滤→详情→更新→中文搜索→软删→恢复）
 
 **验收**：
 - `uv run pytest --cov` 全绿，核心模块覆盖 ≥ 80%
@@ -72,6 +80,14 @@ git commit -m "docs: project requirements, design and tech stack"
 | 2.4 | `routes/chat.py`（会话部分） | sessions CRUD + 历史消息端点 | 2.3 |
 | 2.5 | SSE 对话端点 | `POST /:id/chat` → `citations`(空) → `delta`* → `done`；AbortController 断开即取消任务 | 2.2、2.4 |
 | 2.6 | 设置模块 | settings 读写、`PUT /api/settings`、`POST /api/providers/test`（真实连发一条 ping 消息） | 2.2 |
+
+**执行记录（2026-08-18 完成阶段 2）**：
+- 测试 123 通过；真实 key 冒烟 DeepSeek + GLM 双 PASS（`tests/smoke_stage2.py`）
+- 偏差：provider `chat_stream` 用同步 Iterator + StreamingResponse 线程池
+  （而非 AsyncIterator），FakeProvider 回放更简单，DESIGN §5 签名语义不变
+- 偏差：缺 API key 在「创建会话」时报 400（fail fast）；`providers/test` 失败返回
+  502 JSON `{ok: false}`；GLM 默认模型定为 `glm-4-flash`
+- `list_sessions` 排序加 rowid 决胜（微秒时间戳碰撞时偶发乱序）
 
 **验收**：
 - FakeProvider 驱动的 SSE 集成测试绿（正常流、中断流、上游报错 502）

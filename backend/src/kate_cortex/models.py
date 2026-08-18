@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 EntryType = Literal["note", "clip", "decision", "howto"]
 EntrySource = Literal["manual", "chat", "import"]
+ProviderName = Literal["deepseek", "glm"]
 
 
 class EntryCreate(BaseModel):
@@ -74,3 +75,58 @@ class ReindexOut(BaseModel):
     indexed: int
     unindexed_before: list[str]
     missing_files: list[str]
+
+
+class SessionCreate(BaseModel):
+    provider: ProviderName
+    model: str | None = None
+    title: str | None = None
+
+
+class SessionRename(BaseModel):
+    title: str = Field(min_length=1)
+
+
+class SessionOut(BaseModel):
+    id: str
+    title: str | None
+    provider: str
+    model: str
+    created_at: str
+    updated_at: str
+    preview: str = ""
+
+
+class MessageOut(BaseModel):
+    id: str
+    conversation_id: str
+    role: str
+    content: str
+    tool_calls: list | None = None
+    knowledge_refs: list | None = None
+    created_at: str
+
+
+class ChatRequest(BaseModel):
+    content: str = Field(min_length=1)
+    rag_enabled: bool = True
+
+
+class SettingsUpdate(BaseModel):
+    provider_keys: dict[str, str] | None = None
+    default_provider: ProviderName | None = None
+    default_model: str | None = None
+    rag_default: bool | None = None
+    vault_path: str | None = None
+
+
+class SettingsOut(BaseModel):
+    provider_keys: dict[str, str]
+    default_provider: str
+    default_model: str
+    rag_default: bool
+    vault_path: str | None
+
+
+class ProviderTestIn(BaseModel):
+    provider: ProviderName
