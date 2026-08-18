@@ -156,7 +156,7 @@ class TestSseChat:
 
         last_call = fake.calls[-1]
         roles = [m["role"] for m in last_call["messages"]]
-        assert roles == ["user", "assistant", "user"]
+        assert roles == ["system", "user", "assistant", "user"]
 
 
 class TestSettingsApi:

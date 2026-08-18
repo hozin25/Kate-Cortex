@@ -1,22 +1,18 @@
 """会话与 SSE 流式对话端点（DESIGN.md §4.2）"""
 
-import json
-
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from ..chat.agent import run_agent_chat, sse as sse_event
+from ..chat.rag import retrieve
 from ..chat.service import SessionNotFound
 from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
 from ..providers import DEFAULT_MODELS
-from ..providers.base import Done, ProviderError, TextDelta
+from ..providers.base import ProviderError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 HISTORY_ROUNDS = 20
-
-
-def sse_event(event: str, data: dict) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 @router.post("/sessions", status_code=201, response_model=SessionOut)
@@ -78,11 +74,16 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
 
+    settings = request.app.state.settings_service.get_all()
+    rag_enabled = (
+        payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
+    )
+
     chat_service.append_message(session_id, "user", payload.content)
     chat_service.ensure_title(session_id, payload.content)
+    history = _history_messages(chat_service, session_id)
 
     def generate():
-        yield sse_event("citations", {"entries": []})
         try:
             provider = request.app.state.provider_factory(
                 session.provider, session.model
@@ -91,21 +92,26 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             yield sse_event("error", {"message": str(exc)})
             return
 
-        history = _history_messages(chat_service, session_id)
-        parts: list[str] = []
-        try:
-            for event in provider.chat_stream(history):
-                if isinstance(event, TextDelta):
-                    parts.append(event.text)
-                    yield sse_event("delta", {"text": event.text})
-        except Exception as exc:
-            yield sse_event("error", {"message": f"上游错误: {exc}"})
-            return
-
-        message = chat_service.append_message(
-            session_id, "assistant", "".join(parts)
+        snippets = (
+            retrieve(request.app.state.storage, payload.content) if rag_enabled else []
         )
-        yield sse_event("done", {"message_id": message.id})
+        yield sse_event(
+            "citations",
+            {
+                "entries": [
+                    {"id": s.entry_id, "title": s.title, "slug": s.slug}
+                    for s in snippets
+                ]
+            },
+        )
+        yield from run_agent_chat(
+            provider=provider,
+            storage=request.app.state.storage,
+            chat_service=chat_service,
+            session_id=session_id,
+            history=history,
+            rag_snippets=snippets,
+        )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

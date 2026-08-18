@@ -51,6 +51,17 @@ class TestQuery:
 
         assert search.query("完全无关的词") == []
 
+    def test_question_words_are_ignored_in_query(self, tmp_path):
+        from kate_cortex import db as db_mod
+
+        database = db_mod.connect(tmp_path / "i.sqlite")
+        search = Search(database.conn)
+        search.index_entry("e1", "连接池调优方案", "max_size 设为 20。", [])
+
+        hits = search.query("连接池怎么调优")
+
+        assert [hit.entry_id for hit in hits] == ["e1"]
+
     def test_remove_entry_drops_from_index(self, tmp_path):
         from kate_cortex import db as db_mod
 

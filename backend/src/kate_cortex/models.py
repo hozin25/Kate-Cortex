@@ -109,7 +109,7 @@ class MessageOut(BaseModel):
 
 class ChatRequest(BaseModel):
     content: str = Field(min_length=1)
-    rag_enabled: bool = True
+    rag_enabled: bool | None = None
 
 
 class SettingsUpdate(BaseModel):

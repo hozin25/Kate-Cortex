@@ -5,6 +5,16 @@ from typing import NamedTuple
 
 import jieba
 
+# 疑问词与常见虚词：进入查询会以 AND 拖垮召回
+STOPWORDS = frozenset(
+    {
+        "怎么", "怎样", "如何", "什么", "为什么", "哪些", "哪个", "谁", "吗", "呢",
+        "吧", "的", "了", "是", "在", "我", "你", "他", "她", "它", "们", "请",
+        "请问", "告诉", "说说", "讲讲", "一下", "有没有", "能不能", "可以", "应该",
+        "吗", "呢", "啊", "呀", "哦",
+    }
+)
+
 
 class SearchHit(NamedTuple):
     entry_id: str
@@ -20,7 +30,11 @@ class Search:
         return " ".join(t for t in jieba.cut(text) if t.strip())
 
     def match_expr(self, keywords: str) -> str:
-        tokens = [t for t in jieba.cut(keywords) if _is_word(t)]
+        tokens = [
+            t
+            for t in jieba.cut(keywords)
+            if _is_word(t) and t not in STOPWORDS
+        ]
         if not tokens:
             return ""
         return " AND ".join(f'"{t}"' for t in tokens)

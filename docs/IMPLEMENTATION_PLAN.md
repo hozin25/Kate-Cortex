@@ -109,6 +109,16 @@ git commit -m "docs: project requirements, design and tech stack"
 | 3.4 | `chat/rag.py` | jieba → FTS5 top3（每条截 ~500 字）→ 注入 system prompt 尾部；`knowledge_refs` 落库；`rag_enabled` 请求级开关 | 1.8、3.1 |
 | 3.5 | 集成测试 | FakeProvider 脚本化吐 tool_call → 验证入库产物、SSE 事件序列、二次生成；suggest 流不落库 | 3.3 |
 
+**执行记录（2026-08-18 完成阶段 3，★ M3 最小闭环达成）**：
+- 测试 145 通过；真实模型三场景冒烟全 PASS（`tests/smoke_stage3.py`：
+  DeepSeek 指令保存 / GLM 主动建议+确认入库 / DeepSeek RAG 引用）
+- 偏差：`search.match_expr` 增加中文疑问词/虚词停用词过滤——
+  否则「连接池怎么调优」因 AND 上「怎么」而零召回
+- agent loop 落库策略：中间轮 tool 消息不落库；最终 assistant 消息带
+  `tool_calls`（执行摘要）与 `knowledge_refs`（RAG 命中）；历史回放只带
+  user/assistant 文本（工具细节不重复注入）
+- FakeProvider 升级支持 `rounds` 多轮脚本（agent 二次生成测试基石）
+
 **验收**（真实模型三场景）：
 1. 对话中输入「把刚才这个记一下」→ 保存卡片出现 → vault 生成 md、frontmatter 正确
 2. 聊出一个明显结论 → AI 主动弹建议卡片 → 点确认（用 curl 模拟）→ 入库
