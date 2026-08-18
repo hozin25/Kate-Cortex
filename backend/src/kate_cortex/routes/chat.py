@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..chat.agent import run_agent_chat, sse as sse_event
-from ..chat.rag import retrieve
+from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
 from ..providers import DEFAULT_MODELS
@@ -95,6 +95,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         snippets = (
             retrieve(request.app.state.storage, payload.content) if rag_enabled else []
         )
+        profile = user_profile(request.app.state.storage)
         yield sse_event(
             "citations",
             {
@@ -111,6 +112,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             session_id=session_id,
             history=history,
             rag_snippets=snippets,
+            profile_snippets=profile,
         )
 
     return StreamingResponse(generate(), media_type="text/event-stream")

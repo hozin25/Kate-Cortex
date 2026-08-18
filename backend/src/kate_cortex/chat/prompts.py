@@ -26,10 +26,19 @@ KNOWLEDGE_HEADER = (
     "以下内容来自用户的知识库沉淀，回答时可参考，并注明来源条目标题。"
 )
 
+PROFILE_HEADER = (
+    "## 用户档案\n"
+    "以下是关于用户本人的基本信息。回答与用户身份、背景、职业、偏好相关的提问时"
+    "直接采用这里的内容，无需向用户重复确认。"
+)
 
-def build_system_prompt(snippets) -> str:
+
+def build_system_prompt(rag_snippets=None, profile_snippets=None) -> str:
     parts = [PERSONA, TOOL_RULES]
-    if snippets:
-        blocks = [f"### {s.title}\n{s.content}" for s in snippets]
+    if profile_snippets:
+        blocks = [f"### {s.title}\n{s.content}" for s in profile_snippets]
+        parts.append(PROFILE_HEADER + "\n\n" + "\n\n".join(blocks))
+    if rag_snippets:
+        blocks = [f"### {s.title}\n{s.content}" for s in rag_snippets]
         parts.append(KNOWLEDGE_HEADER + "\n\n" + "\n\n".join(blocks))
     return "\n\n".join(parts)

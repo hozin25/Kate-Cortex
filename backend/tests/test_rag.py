@@ -1,5 +1,5 @@
 from kate_cortex.chat.prompts import build_system_prompt
-from kate_cortex.chat.rag import retrieve
+from kate_cortex.chat.rag import retrieve, user_profile
 
 
 class TestRetrieve:
@@ -53,3 +53,45 @@ class TestBuildSystemPrompt:
     def test_no_knowledge_omits_section(self):
         prompt = build_system_prompt(None)
         assert "## 用户知识库参考" not in prompt
+
+
+class TestUserProfile:
+    def test_returns_only_entries_tagged_profile(self, storage):
+        storage.create_entry(
+            title="用户教育背景",
+            type="note",
+            tags=["个人信息", "教育背景"],
+            source="manual",
+            content="软件工程学生。",
+        )
+        storage.create_entry(
+            title="连接池调优",
+            type="howto",
+            tags=["python"],
+            source="manual",
+            content="max_size 设为 20。",
+        )
+
+        profile = user_profile(storage)
+
+        assert [s.title for s in profile] == ["用户教育背景"]
+
+    def test_prompt_contains_profile_even_without_rag(self, storage):
+        storage.create_entry(
+            title="用户教育背景",
+            type="note",
+            tags=["个人信息"],
+            source="manual",
+            content="软件工程学生。",
+        )
+        profile = user_profile(storage)
+
+        prompt = build_system_prompt(None, profile)
+
+        assert "## 用户档案" in prompt
+        assert "软件工程学生" in prompt
+        assert "## 用户知识库参考" not in prompt
+
+    def test_no_profile_omits_section(self):
+        prompt = build_system_prompt(None, None)
+        assert "## 用户档案" not in prompt

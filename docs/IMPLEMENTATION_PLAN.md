@@ -205,6 +205,6 @@ git commit -m "docs: project requirements, design and tech stack"
 | 触发条件 | 动作 |
 |---|---|
 | 流式 tool_calls 兼容问题排查超半天 | 停下讨论非流式 fallback（对话体验降级换取稳定） |
-| jieba 搜索召回明显差 | 提前引入向量检索（影响 v0.2 范围） |
+| ~~jieba 搜索召回明显差~~ | ✅ 2026-08-18 触发并处置：同义改写零召回（问「身份」条目只有「学生」）。与用户讨论后选 **A. 用户档案常驻注入**（tag=个人信息 无视 RAG 开关注入 system prompt，DESIGN §7 已增补）；向量检索仍留 v0.2 |
 | PyInstaller 产物被杀软拦截且无法豁免 | 讨论改 `uv run` 常驻 / 要求装 Python 环境 |
 | GLM 与 DeepSeek 工具调用行为差异过大 | 讨论是否 MVP 只保一家、另一家降级纯对话 |

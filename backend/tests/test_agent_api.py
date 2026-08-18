@@ -280,3 +280,40 @@ class TestRagIntegration:
         chat(client, session_id, content="随便聊聊", rag=None)
 
         assert "## 用户知识库参考" not in fake.calls[0]["messages"][0]["content"]
+
+    def test_profile_injected_even_when_rag_off(self, client):
+        client.post(
+            "/api/entries",
+            json={
+                "title": "用户教育背景",
+                "type": "note",
+                "tags": ["个人信息"],
+                "content": "用户是软件工程专业的学生。",
+                "source": "manual",
+            },
+        )
+        client.post(
+            "/api/entries",
+            json={
+                "title": "连接池调优方案",
+                "type": "howto",
+                "tags": ["python"],
+                "content": "max_size 设为 20。",
+                "source": "manual",
+            },
+        )
+        session_id = start_session(client)
+        fake = FakeProvider(rounds=[[TextDelta("你是软件工程学生。"), Done("stop")]])
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(
+            chat(client, session_id, content="我的身份是什么", rag=False).text
+        )
+
+        system_prompt = fake.calls[0]["messages"][0]["content"]
+        assert "## 用户档案" in system_prompt
+        assert "软件工程专业的学生" in system_prompt
+        assert "max_size" not in system_prompt
+        assert "## 用户知识库参考" not in system_prompt
+        citations = next(data for name, data in events if name == "citations")
+        assert citations["entries"] == []
