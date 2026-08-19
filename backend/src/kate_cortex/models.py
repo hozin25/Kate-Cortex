@@ -4,15 +4,13 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-EntryType = Literal["note", "clip", "decision", "howto"]
 EntrySource = Literal["manual", "chat", "import"]
 ProviderName = Literal["deepseek", "glm"]
 
 
 class EntryCreate(BaseModel):
     title: str = Field(min_length=1)
-    type: EntryType
-    tags: list[str] = Field(default_factory=list)
+    collections: list[str] = Field(default_factory=list)
     content: str = ""
     source: EntrySource = "manual"
     language: str | None = None
@@ -23,8 +21,7 @@ class EntryCreate(BaseModel):
 class EntryUpdate(BaseModel):
     title: str | None = None
     content: str | None = None
-    tags: list[str] | None = None
-    type: EntryType | None = None
+    collections: list[str] | None = None
     language: str | None = None
 
 
@@ -32,8 +29,7 @@ class EntryOut(BaseModel):
     id: str
     slug: str
     title: str
-    type: str
-    tags: list[str]
+    collections: list[str]
     source: str
     language: str | None
     conversation_id: str | None
@@ -47,8 +43,7 @@ class EntrySummaryOut(BaseModel):
     id: str
     slug: str
     title: str
-    type: str
-    tags: list[str]
+    collections: list[str]
     source: str
     language: str | None
     conversation_id: str | None
@@ -61,7 +56,15 @@ class EntryListOut(BaseModel):
     total: int
 
 
-class TagOut(BaseModel):
+class CollectionCreate(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class CollectionRename(BaseModel):
+    name: str = Field(min_length=1)
+
+
+class CollectionOut(BaseModel):
     name: str
     count: int
 

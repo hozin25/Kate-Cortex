@@ -1,5 +1,6 @@
 """markdown ↔ SQLite 双写存储（DESIGN.md §3.4）：md 是事实来源，SQLite 是索引"""
 
+import logging
 import shutil
 import sqlite3
 from dataclasses import dataclass
@@ -9,7 +10,6 @@ from pathlib import Path
 from .config import Config
 from .db import Database
 from .frontmatter import (
-    ENTRY_TYPES,
     SOURCES,
     EntryMeta,
     FrontmatterError,
@@ -22,6 +22,11 @@ from .slugify import slugify
 
 TRASH_DIR = ".trash"
 
+# 用户档案常驻注入按「个人信息」合集识别（DESIGN.md §7）
+PROFILE_COLLECTION = "个人信息"
+
+logger = logging.getLogger(__name__)
+
 
 class StorageError(Exception):
     pass
@@ -31,13 +36,21 @@ class EntryNotFound(StorageError):
     pass
 
 
+class CollectionExists(StorageError):
+    pass
+
+
+class CollectionNotFound(StorageError):
+    pass
+
+
 @dataclass
 class Entry:
     id: str
     slug: str
     title: str
-    type: str
-    tags: list[str]
+    tags: list[str]  # 已废弃（v3）：仅透传存量 frontmatter 数据
+    collections: list[str]
     source: str
     language: str | None
     conversation_id: str | None
@@ -52,8 +65,7 @@ class EntrySummary:
     id: str
     slug: str
     title: str
-    type: str
-    tags: list[str]
+    collections: list[str]
     source: str
     language: str | None
     conversation_id: str | None
@@ -82,16 +94,13 @@ class Storage:
         self,
         *,
         title: str,
-        type: str,
-        tags: list[str],
         source: str,
         content: str,
+        collections: list[str] | None = None,
         language: str | None = None,
         conversation_id: str | None = None,
         slug: str | None = None,
     ) -> Entry:
-        if type not in ENTRY_TYPES:
-            raise StorageError(f"type 非法: {type!r}")
         if source not in SOURCES:
             raise StorageError(f"source 非法: {source!r}")
 
@@ -102,11 +111,11 @@ class Storage:
             id=entry_id,
             slug=final_slug,
             title=title,
-            type=type,
-            tags=_dedup(tags),
+            tags=[],
             source=source,
             created_at=now,
             updated_at=now,
+            collections=_dedup(collections or []),
             language=language,
             conversation=conversation_id,
         )
@@ -136,22 +145,18 @@ class Storage:
     def list_entries(
         self,
         *,
-        type: str | None = None,
-        tag: str | None = None,
+        collection: str | None = None,
         q: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> tuple[list[EntrySummary], int]:
         where, params = [], []
-        if type:
-            where.append("e.type = ?")
-            params.append(type)
-        if tag:
+        if collection:
             where.append(
-                "e.id IN (SELECT et.entry_id FROM entry_tags et"
-                " JOIN tags t ON t.id = et.tag_id WHERE t.name = ?)"
+                "e.id IN (SELECT ec.entry_id FROM entry_collections ec"
+                " JOIN collections c ON c.id = ec.collection_id WHERE c.name = ?)"
             )
-            params.append(tag)
+            params.append(collection)
         if q:
             expr = self.search.match_expr(q)
             if not expr:
@@ -188,8 +193,7 @@ class Storage:
         *,
         title: str | None = None,
         content: str | None = None,
-        tags: list[str] | None = None,
-        type: str | None = None,
+        collections: list[str] | None = None,
         language: str | None = None,
     ) -> Entry:
         row = self._find_row(entry_id)
@@ -197,11 +201,10 @@ class Storage:
             raise EntryNotFound(f"条目不存在: {entry_id}")
         current = self._read_entry_file(row)
 
-        new_type = type or current.type
-        if new_type not in ENTRY_TYPES:
-            raise StorageError(f"type 非法: {new_type!r}")
         new_title = title if title is not None else current.title
-        new_tags = _dedup(tags) if tags is not None else current.tags
+        new_collections = (
+            _dedup(collections) if collections is not None else current.collections
+        )
         new_content = content if content is not None else current.content
         new_language = language if language is not None else current.language
         now = _now()
@@ -210,11 +213,11 @@ class Storage:
             id=current.id,
             slug=current.slug,
             title=new_title,
-            type=new_type,
-            tags=new_tags,
+            tags=current.tags,
             source=current.source,
             created_at=current.created_at,
             updated_at=now,
+            collections=new_collections,
             language=new_language,
             conversation=current.conversation_id,
         )
@@ -223,19 +226,20 @@ class Storage:
         try:
             with self.conn:
                 self.conn.execute(
-                    "UPDATE entries SET title=?, type=?, language=?, updated_at=? WHERE id=?",
-                    (new_title, new_type, new_language, now, current.id),
+                    "UPDATE entries SET title=?, language=?, updated_at=? WHERE id=?",
+                    (new_title, new_language, now, current.id),
                 )
-                self._write_tags(current.id, new_tags)
+                self._write_collections(current.id, new_collections)
                 self._write_links(current.id, new_content)
-                self.search.index_entry(current.id, new_title, new_content, new_tags)
+                self.search.index_entry(current.id, new_title, new_content)
         except Exception:
             md_file.write_text(
                 dump_markdown(
                     EntryMeta(
                         id=current.id, slug=current.slug, title=current.title,
-                        type=current.type, tags=current.tags, source=current.source,
+                        tags=current.tags, source=current.source,
                         created_at=current.created_at, updated_at=current.updated_at,
+                        collections=current.collections,
                         language=current.language, conversation=current.conversation_id,
                     ),
                     current.content,
@@ -263,7 +267,6 @@ class Storage:
         with self.conn:
             self.conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
             self.search.remove_entry(entry_id)
-            self._cleanup_orphan_tags()
 
     def restore_entry(self, entry_id: str) -> Entry:
         for md_file in (self.vault / TRASH_DIR).rglob("*.md"):
@@ -316,7 +319,6 @@ class Storage:
         report = self.sync()
         with self.conn:
             self.conn.execute("DELETE FROM entries")
-            self.conn.execute("DELETE FROM tags")
             self.conn.execute("DELETE FROM entries_fts")
             indexed = 0
             for md_file in self._vault_files():
@@ -329,34 +331,124 @@ class Storage:
                 indexed += 1
         return report, indexed
 
-    # ── 标签 ──
+    # ── 合集 ──
 
-    def list_tags(self) -> list[tuple[str, int]]:
+    def migrate_profile_to_collection(self) -> int:
+        """存量迁移（v3）：frontmatter tags 含「个人信息」的条目收进
+        「个人信息」合集并从 tags 移除该项。按数据状态判断，幂等可重跑；
+        title/content/时间戳不变，故无需更新 entries 行与 FTS"""
+        migrated = 0
+        for row in self.conn.execute("SELECT * FROM entries").fetchall():
+            try:
+                entry = self._read_entry_file(row)
+                if PROFILE_COLLECTION not in entry.tags:
+                    continue
+                meta = EntryMeta(
+                    id=entry.id,
+                    slug=entry.slug,
+                    title=entry.title,
+                    tags=[t for t in entry.tags if t != PROFILE_COLLECTION],
+                    source=entry.source,
+                    created_at=entry.created_at,
+                    updated_at=entry.updated_at,
+                    collections=_dedup([*entry.collections, PROFILE_COLLECTION]),
+                    language=entry.language,
+                    conversation=entry.conversation_id,
+                )
+                md_file = self.vault / entry.file_path
+                md_file.write_text(dump_markdown(meta, entry.content), encoding="utf-8")
+                with self.conn:
+                    self._write_collections(entry.id, meta.collections)
+                migrated += 1
+            except Exception as exc:
+                logger.warning("档案迁移失败，跳过条目 %s: %s", row["id"], exc)
+        return migrated
+
+    def list_collections(self) -> list[tuple[str, int]]:
         rows = self.conn.execute(
-            "SELECT t.name, COUNT(et.entry_id) AS cnt FROM tags t"
-            " LEFT JOIN entry_tags et ON et.tag_id = t.id"
-            " GROUP BY t.id ORDER BY t.name"
+            "SELECT c.name, COUNT(ec.entry_id) AS cnt FROM collections c"
+            " LEFT JOIN entry_collections ec ON ec.collection_id = c.id"
+            " GROUP BY c.id ORDER BY c.name"
         ).fetchall()
         return [(row[0], row[1]) for row in rows]
 
-    def delete_tag(self, name: str) -> int:
-        row = self.conn.execute("SELECT id FROM tags WHERE name = ?", (name,)).fetchone()
+    def create_collection(self, name: str) -> None:
+        name = name.strip()
+        if not name:
+            raise StorageError("合集名不能为空")
+        if self._collection_row(name) is not None:
+            raise CollectionExists(f"合集已存在: {name}")
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO collections (name, created_at) VALUES (?, ?)",
+                (name, _now()),
+            )
+
+    def rename_collection(self, old: str, new: str) -> int:
+        row = self._collection_row(old)
         if row is None:
-            raise EntryNotFound(f"标签不存在: {name}")
-        entry_ids = [
+            raise CollectionNotFound(f"合集不存在: {old}")
+        new = new.strip()
+        if not new:
+            raise StorageError("合集名不能为空")
+        if new == old:
+            return self._member_count(row[0])
+        if self._collection_row(new) is not None:
+            raise CollectionExists(f"合集已存在: {new}")
+
+        member_ids = [
             r[0]
             for r in self.conn.execute(
-                "SELECT entry_id FROM entry_tags WHERE tag_id = ?", (row[0],)
+                "SELECT entry_id FROM entry_collections WHERE collection_id = ?",
+                (row[0],),
             )
         ]
-        for entry_id in entry_ids:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE collections SET name = ? WHERE id = ?", (new, row[0])
+            )
+        for entry_id in member_ids:
             entry = self.get_entry(entry_id)
             if entry is None:
                 continue
-            self.update_entry(entry_id, tags=[t for t in entry.tags if t != name])
+            self.update_entry(
+                entry_id,
+                collections=[new if c == old else c for c in entry.collections],
+            )
+        return len(member_ids)
+
+    def delete_collection(self, name: str) -> int:
+        row = self._collection_row(name)
+        if row is None:
+            raise CollectionNotFound(f"合集不存在: {name}")
+        member_ids = [
+            r[0]
+            for r in self.conn.execute(
+                "SELECT entry_id FROM entry_collections WHERE collection_id = ?",
+                (row[0],),
+            )
+        ]
+        for entry_id in member_ids:
+            entry = self.get_entry(entry_id)
+            if entry is None:
+                continue
+            self.update_entry(
+                entry_id, collections=[c for c in entry.collections if c != name]
+            )
         with self.conn:
-            self._cleanup_orphan_tags()
-        return len(entry_ids)
+            self.conn.execute("DELETE FROM collections WHERE id = ?", (row[0],))
+        return len(member_ids)
+
+    def _collection_row(self, name: str) -> sqlite3.Row | None:
+        return self.conn.execute(
+            "SELECT id FROM collections WHERE name = ?", (name,)
+        ).fetchone()
+
+    def _member_count(self, collection_id: int) -> int:
+        return self.conn.execute(
+            "SELECT COUNT(*) FROM entry_collections WHERE collection_id = ?",
+            (collection_id,),
+        ).fetchone()[0]
 
     # ── 内部 ──
 
@@ -381,8 +473,8 @@ class Storage:
             id=meta.id,
             slug=meta.slug,
             title=meta.title,
-            type=meta.type,
             tags=meta.tags,
+            collections=meta.collections,
             source=meta.source,
             language=meta.language,
             conversation_id=meta.conversation,
@@ -393,11 +485,12 @@ class Storage:
         )
 
     def _to_summary(self, row: sqlite3.Row) -> EntrySummary:
-        tags = [
-            tag_row[0]
-            for tag_row in self.conn.execute(
-                "SELECT t.name FROM entry_tags et JOIN tags t ON t.id = et.tag_id"
-                " WHERE et.entry_id = ? ORDER BY t.name",
+        collections = [
+            c_row[0]
+            for c_row in self.conn.execute(
+                "SELECT c.name FROM entry_collections ec"
+                " JOIN collections c ON c.id = ec.collection_id"
+                " WHERE ec.entry_id = ? ORDER BY c.name",
                 (row["id"],),
             )
         ]
@@ -405,8 +498,7 @@ class Storage:
             id=row["id"],
             slug=row["slug"],
             title=row["title"],
-            type=row["type"],
-            tags=tags,
+            collections=collections,
             source=row["source"],
             language=row["language"],
             conversation_id=row["conversation_id"],
@@ -417,29 +509,35 @@ class Storage:
     def _write_db(self, meta: EntryMeta, content: str, rel_path: str) -> None:
         with self.conn:
             self.conn.execute(
-                "INSERT INTO entries (id, slug, title, type, language, source,"
+                "INSERT INTO entries (id, slug, title, language, source,"
                 " conversation_id, file_path, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    meta.id, meta.slug, meta.title, meta.type, meta.language,
+                    meta.id, meta.slug, meta.title, meta.language,
                     meta.source, meta.conversation, rel_path,
                     meta.created_at, meta.updated_at,
                 ),
             )
-            self._write_tags(meta.id, meta.tags)
+            self._write_collections(meta.id, meta.collections)
             self._write_links(meta.id, content)
-            self.search.index_entry(meta.id, meta.title, content, meta.tags)
+            self.search.index_entry(meta.id, meta.title, content)
 
-    def _write_tags(self, entry_id: str, tags: list[str]) -> None:
-        self.conn.execute("DELETE FROM entry_tags WHERE entry_id = ?", (entry_id,))
-        for tag in tags:
-            self.conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag,))
-            tag_id = self.conn.execute(
-                "SELECT id FROM tags WHERE name = ?", (tag,)
+    def _write_collections(self, entry_id: str, names: list[str]) -> None:
+        self.conn.execute(
+            "DELETE FROM entry_collections WHERE entry_id = ?", (entry_id,)
+        )
+        for name in names:
+            self.conn.execute(
+                "INSERT OR IGNORE INTO collections (name, created_at) VALUES (?, ?)",
+                (name, _now()),
+            )
+            collection_id = self.conn.execute(
+                "SELECT id FROM collections WHERE name = ?", (name,)
             ).fetchone()[0]
             self.conn.execute(
-                "INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)",
-                (entry_id, tag_id),
+                "INSERT OR IGNORE INTO entry_collections (entry_id, collection_id)"
+                " VALUES (?, ?)",
+                (entry_id, collection_id),
             )
 
     def _write_links(self, entry_id: str, content: str) -> None:
@@ -449,11 +547,6 @@ class Storage:
                 "INSERT OR IGNORE INTO entry_links (from_id, to_slug) VALUES (?, ?)",
                 (entry_id, slug),
             )
-
-    def _cleanup_orphan_tags(self) -> None:
-        self.conn.execute(
-            "DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM entry_tags)"
-        )
 
     def _next_id(self) -> str:
         date = datetime.now().strftime("%Y%m%d")
@@ -488,10 +581,10 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def _dedup(tags: list[str]) -> list[str]:
+def _dedup(items: list[str]) -> list[str]:
     seen: dict[str, None] = {}
-    for tag in tags:
-        tag = tag.strip()
-        if tag:
-            seen.setdefault(tag, None)
+    for item in items:
+        item = item.strip()
+        if item:
+            seen.setdefault(item, None)
     return list(seen)

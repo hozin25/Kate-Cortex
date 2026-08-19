@@ -1,44 +1,39 @@
 import { create } from 'zustand'
 import { api } from '@renderer/api/client'
-import type { EntryList, EntrySummary, TagCount } from '@renderer/types'
+import type { CollectionCount, EntryList, EntrySummary } from '@renderer/types'
 
 interface LibraryState {
   items: EntrySummary[]
   total: number
-  tags: TagCount[]
-  typeFilter: string | null
-  tagFilter: string | null
+  collections: CollectionCount[]
+  collectionFilter: string | null
   query: string
   loading: boolean
   load: () => Promise<void>
-  setTypeFilter: (type: string | null) => void
-  setTagFilter: (tag: string | null) => void
+  setCollectionFilter: (collection: string | null) => void
   setQuery: (q: string) => void
+  createCollection: (name: string) => Promise<void>
+  renameCollection: (oldName: string, newName: string) => Promise<void>
+  deleteCollection: (name: string) => Promise<void>
   refresh: () => Promise<void>
 }
 
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   items: [],
   total: 0,
-  tags: [],
-  typeFilter: null,
-  tagFilter: null,
+  collections: [],
+  collectionFilter: null,
   query: '',
   loading: false,
 
   load: async () => {
-    const tags = await api.get<TagCount[]>('/tags')
-    set({ tags })
+    const collections = await api.get<CollectionCount[]>('/collections')
+    set({ collections })
     await get().refresh()
   },
 
-  setTypeFilter: (type) => {
-    set({ typeFilter: type })
-    void get().refresh()
-  },
-
-  setTagFilter: (tag) => {
-    set({ tagFilter: tag })
+  setCollectionFilter: (collection) => {
+    set({ collectionFilter: collection })
     void get().refresh()
   },
 
@@ -47,13 +42,32 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     void get().refresh()
   },
 
+  createCollection: async (name) => {
+    await api.post('/collections', { name })
+    const collections = await api.get<CollectionCount[]>('/collections')
+    set({ collections })
+  },
+
+  renameCollection: async (oldName, newName) => {
+    await api.put(`/collections/${encodeURIComponent(oldName)}`, { name: newName })
+    await get().load()
+  },
+
+  deleteCollection: async (name) => {
+    await api.delete(`/collections/${encodeURIComponent(name)}`)
+    const { collectionFilter } = get()
+    if (collectionFilter === name) {
+      set({ collectionFilter: null })
+    }
+    await get().load()
+  },
+
   refresh: async () => {
-    const { typeFilter, tagFilter, query } = get()
+    const { collectionFilter, query } = get()
     set({ loading: true })
     try {
       const params = new URLSearchParams()
-      if (typeFilter) params.set('type', typeFilter)
-      if (tagFilter) params.set('tag', tagFilter)
+      if (collectionFilter) params.set('collection', collectionFilter)
       if (query.trim()) params.set('q', query.trim())
       const result = await api.get<EntryList>(`/entries?${params.toString()}`)
       set({ items: result.items, total: result.total })

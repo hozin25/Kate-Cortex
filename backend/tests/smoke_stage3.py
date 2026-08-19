@@ -54,7 +54,7 @@ def scenario1_save(client) -> bool:
         return False
     entry_id = tool_results[0]["entry_id"]
     detail = client.get(f"/api/entries/{entry_id}").json()
-    print(f"  入库: {detail['id']} 《{detail['title']}》 type={detail['type']} tags={detail['tags']}")
+    print(f"  入库: {detail['id']} 《{detail['title']}》 collections={detail['collections']}")
     print(f"  来源: source={detail['source']} conversation={detail['conversation_id'] == session['id']}")
     md_ok = "SQLite" in detail["content"]
     print(f"  正文含关键词: {md_ok}")
@@ -75,13 +75,12 @@ def scenario2_suggest(client) -> bool:
         print("  WARN: 模型未主动建议（不阻塞验收，人工判断即可）")
         return True
     suggestion = suggests[0]
-    print(f"  建议卡片: 《{suggestion['title']}》 type={suggestion['type']}")
+    print(f"  建议卡片: 《{suggestion['title']}》 collections={suggestion.get('collections', [])}")
     confirmed = client.post(
         "/api/entries",
         json={
             "title": suggestion["title"],
-            "type": suggestion["type"],
-            "tags": suggestion["tags"],
+            "collections": suggestion.get("collections", []),
             "content": suggestion["preview"],
             "source": "chat",
             "conversation_id": session["id"],
@@ -97,8 +96,6 @@ def scenario3_rag(client) -> bool:
         "/api/entries",
         json={
             "title": "SQLite 连接池调优",
-            "type": "howto",
-            "tags": ["sqlite"],
             "content": "max_size 设为 20，pool_pre_ping 开启可避免断连后取到失效连接。",
             "source": "manual",
         },

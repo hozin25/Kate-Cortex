@@ -18,14 +18,13 @@ def create_entry(payload: EntryCreate, request: Request):
 @router.get("", response_model=EntryListOut)
 def list_entries(
     request: Request,
-    type: str | None = None,
-    tag: str | None = None,
+    collection: str | None = None,
     q: str | None = None,
     limit: int = 50,
     offset: int = 0,
 ):
     items, total = request.app.state.storage.list_entries(
-        type=type, tag=tag, q=q, limit=limit, offset=offset
+        collection=collection, q=q, limit=limit, offset=offset
     )
     return EntryListOut(
         items=[EntrySummaryOut(**vars(item)) for item in items], total=total

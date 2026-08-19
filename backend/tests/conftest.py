@@ -40,15 +40,12 @@ def storage(env):
 def seeded(storage):
     first = storage.create_entry(
         title="Redis pipeline 事务模式踩坑",
-        type="howto",
-        tags=["redis", "bug"],
         source="manual",
         content="pipeline 事务模式下不返回结果。\n\n相关：[[fastapi-middleware-she-ji]]\n",
+        collections=["编程"],
     )
     second = storage.create_entry(
         title="FastAPI middleware 设计",
-        type="note",
-        tags=["fastapi", "python"],
         source="manual",
         content="middleware 执行顺序与依赖注入。",
     )

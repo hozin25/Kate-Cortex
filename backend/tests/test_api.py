@@ -14,8 +14,6 @@ def client(env):
 def create(client, **overrides):
     payload = dict(
         title="Redis pipeline 事务模式踩坑",
-        type="howto",
-        tags=["redis", "bug"],
         source="manual",
         content="pipeline 事务模式下不返回结果。",
     )
@@ -39,20 +37,13 @@ class TestEntryCrud:
 
         assert entry["id"].startswith("kc_")
         assert entry["slug"] == "redis-pipeline-shi-wu-mo-shi-cai-keng"
-        assert entry["type"] == "howto"
-        assert entry["tags"] == ["redis", "bug"]
+        assert entry["collections"] == []
 
         md_file = env.vault_path / entry["file_path"]
         assert md_file.is_file()
         text = md_file.read_text(encoding="utf-8")
         assert "title: Redis pipeline 事务模式踩坑" in text
         assert "pipeline 事务模式下不返回结果。" in text
-
-    def test_create_rejects_unknown_type(self, client):
-        resp = client.post(
-            "/api/entries", json={"title": "t", "type": "snippet", "tags": []}
-        )
-        assert resp.status_code == 422
 
     def test_get_by_id_and_slug(self, client):
         entry = create(client)
@@ -68,31 +59,28 @@ class TestEntryCrud:
     def test_get_missing_returns_404(self, client):
         assert client.get("/api/entries/nope").status_code == 404
 
-    def test_list_with_type_and_tag_filter(self, client):
-        create(client)
-        create(client, title="读书笔记", type="note", tags=["reading"])
+    def test_list_with_collection_filter(self, client):
+        create(client, collections=["编程"])
+        create(client, title="读书笔记", collections=["情感"])
 
-        by_type = client.get("/api/entries", params={"type": "note"})
-        by_tag = client.get("/api/entries", params={"tag": "redis"})
+        by_collection = client.get("/api/entries", params={"collection": "编程"})
 
-        assert by_type.json()["total"] == 1
-        assert by_type.json()["items"][0]["title"] == "读书笔记"
-        assert by_tag.json()["total"] == 1
-        assert by_tag.json()["items"][0]["title"] == "Redis pipeline 事务模式踩坑"
+        assert by_collection.json()["total"] == 1
+        assert by_collection.json()["items"][0]["title"] == "Redis pipeline 事务模式踩坑"
 
-    def test_update_entry(self, client):
+    def test_update_entry_collections(self, client):
         entry = create(client)
 
         resp = client.put(
             f"/api/entries/{entry['id']}",
-            json={"title": "改标题", "tags": ["redis", "pipeline"]},
+            json={"title": "改标题", "collections": ["金融"]},
         )
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["title"] == "改标题"
         assert body["slug"] == entry["slug"]
-        assert body["tags"] == ["redis", "pipeline"]
+        assert body["collections"] == ["金融"]
 
 
 class TestSearch:
@@ -147,8 +135,6 @@ class TestLinks:
         second = create(
             client,
             title="FastAPI middleware 设计",
-            type="note",
-            tags=["fastapi"],
             content=f"参考 [[{first['slug']}]]。",
         )
 
@@ -161,27 +147,52 @@ class TestLinks:
         assert client.get("/api/entries/nope/links").status_code == 404
 
 
-class TestTags:
-    def test_list_tags_with_counts(self, client):
-        create(client)
-        create(client, title="另一条", type="note", tags=["redis"])
+class TestCollections:
+    def test_create_list_with_counts(self, client):
+        create(client, collections=["编程"])
+        create(client, title="读书笔记", collections=["情感", "编程"])
 
-        resp = client.get("/api/tags")
+        resp = client.get("/api/collections")
 
-        tags = {item["name"]: item["count"] for item in resp.json()}
-        assert tags == {"bug": 1, "redis": 2}
+        assert resp.status_code == 200
+        assert {item["name"]: item["count"] for item in resp.json()} == {
+            "情感": 1,
+            "编程": 2,
+        }
 
-    def test_delete_tag_updates_entries(self, client):
-        entry = create(client)
+    def test_create_duplicate_returns_409(self, client):
+        assert client.post("/api/collections", json={"name": "金融"}).status_code == 201
+        assert client.post("/api/collections", json={"name": "金融"}).status_code == 409
 
-        resp = client.delete("/api/tags/redis")
+    def test_rename_rewrites_membership(self, client):
+        entry = create(client, collections=["编程"])
+        assert client.post("/api/collections", json={"name": "情感"}).status_code == 201
+
+        resp = client.put("/api/collections/编程", json={"name": "技术"})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"name": "技术", "count": 1}
+        refreshed = client.get(f"/api/entries/{entry['id']}").json()
+        assert refreshed["collections"] == ["技术"]
+        names = {item["name"] for item in client.get("/api/collections").json()}
+        assert names == {"技术", "情感"}
+
+    def test_rename_missing_returns_404(self, client):
+        resp = client.put("/api/collections/不存在", json={"name": "新"})
+        assert resp.status_code == 404
+
+    def test_delete_keeps_entries(self, client):
+        entry = create(client, collections=["编程"])
+
+        resp = client.delete("/api/collections/编程")
 
         assert resp.status_code == 204
         refreshed = client.get(f"/api/entries/{entry['id']}").json()
-        assert refreshed["tags"] == ["bug"]
+        assert refreshed["collections"] == []
+        assert client.get("/api/collections").json() == []
 
-    def test_delete_missing_tag_404(self, client):
-        assert client.delete("/api/tags/nope").status_code == 404
+    def test_delete_missing_returns_404(self, client):
+        assert client.delete("/api/collections/不存在").status_code == 404
 
 
 class TestSync:

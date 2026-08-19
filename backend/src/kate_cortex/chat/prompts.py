@@ -32,8 +32,15 @@ PROFILE_HEADER = (
     "直接采用这里的内容，无需向用户重复确认。"
 )
 
+COLLECTIONS_HEADER = (
+    "## 知识库合集\n"
+    "用户已有的合集如下。调用 save_knowledge / suggest_save 时，若内容主题与其中"
+    "某个合集匹配，可通过 collections 参数建议收录（仅在列出的名称中选择，可多选；"
+    "没有合适的合集则不传，用户会自行整理）。"
+)
 
-def build_system_prompt(rag_snippets=None, profile_snippets=None) -> str:
+
+def build_system_prompt(rag_snippets=None, profile_snippets=None, collections=None) -> str:
     parts = [PERSONA, TOOL_RULES]
     if profile_snippets:
         blocks = [f"### {s.title}\n{s.content}" for s in profile_snippets]
@@ -41,4 +48,6 @@ def build_system_prompt(rag_snippets=None, profile_snippets=None) -> str:
     if rag_snippets:
         blocks = [f"### {s.title}\n{s.content}" for s in rag_snippets]
         parts.append(KNOWLEDGE_HEADER + "\n\n" + "\n\n".join(blocks))
+    if collections:
+        parts.append(COLLECTIONS_HEADER + "\n\n" + "、".join(collections))
     return "\n\n".join(parts)

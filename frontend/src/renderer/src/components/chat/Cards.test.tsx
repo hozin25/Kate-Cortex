@@ -9,27 +9,24 @@ const saved: SavedPayload = {
   entry_id: 'kc_20260818_001',
   slug: 'sqlite-dan-wen-jian-shu-ju-ku',
   title: 'SQLite 是单文件数据库',
-  type: 'decision',
-  tags: ['sqlite', '选型']
+  collections: ['选型复盘']
 }
 
 const suggest: SuggestPayload = {
   title: '连接池调优方案',
-  type: 'howto',
-  tags: ['sqlite', '性能'],
+  collections: ['编程'],
   preview: 'max_size 设为 20，pool_pre_ping 开启可避免断连后取到失效连接。'
 }
 
 describe('SavedCard', () => {
-  it('渲染标题、类型徽标与标签，并提供跳详情链接', () => {
+  it('渲染标题与合集，并提供跳详情链接', () => {
     render(
       <MemoryRouter>
         <SavedCard saved={saved} />
       </MemoryRouter>
     )
     expect(screen.getByText('SQLite 是单文件数据库')).toBeInTheDocument()
-    expect(screen.getByText('决策')).toBeInTheDocument()
-    expect(screen.getByText('#sqlite')).toBeInTheDocument()
+    expect(screen.getByText('选型复盘')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /查看/ })).toHaveAttribute(
       'href',
       `/entries/${saved.entry_id}`
@@ -43,10 +40,25 @@ describe('SuggestCard 确认流', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (String(url).match(/\/api\/collections$/)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve([
+                { name: '编程', count: 1 },
+                { name: '情感', count: 0 }
+              ])
+          })
+        }
         expect(String(url)).toMatch(/\/api\/entries$/)
         expect(init?.method).toBe('POST')
         const body = JSON.parse(String(init?.body))
-        expect(body).toMatchObject({ title: suggest.title, type: suggest.type, source: 'chat' })
+        expect(body).toMatchObject({
+          title: suggest.title,
+          collections: ['编程'],
+          source: 'chat'
+        })
         return Promise.resolve({ ok: true, status: 201, json: postMock })
       })
     )
@@ -73,6 +85,47 @@ describe('SuggestCard 确认流', () => {
     vi.unstubAllGlobals()
   })
 
+  it('可增删建议合集后再保存', async () => {
+    const postMock = vi.fn().mockResolvedValue({ id: 'kc_20260818_003' })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+        if (String(url).match(/\/api\/collections$/)) {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: () =>
+              Promise.resolve([
+                { name: '编程', count: 1 },
+                { name: '情感', count: 0 }
+              ])
+          })
+        }
+        const body = JSON.parse(String(init?.body))
+        expect(body.collections).toEqual(['编程', '情感'])
+        return Promise.resolve({ ok: true, status: 201, json: postMock })
+      })
+    )
+    const onDismiss = vi.fn()
+
+    render(
+      <MemoryRouter>
+        <SuggestCard suggest={suggest} conversationId="kc_conv_abc" onDismiss={onDismiss} />
+      </MemoryRouter>
+    )
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /情感/ })).toBeInTheDocument()
+    })
+    await userEvent.setup().click(screen.getByRole('button', { name: /情感/ }))
+    await userEvent.setup().click(screen.getByRole('button', { name: '存入知识库' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('已存入知识库')).toBeInTheDocument()
+    })
+    vi.unstubAllGlobals()
+  })
+
   it('点击「忽略」不发送请求，直接移除', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
@@ -84,7 +137,10 @@ describe('SuggestCard 确认流', () => {
     )
     await userEvent.setup().click(screen.getByRole('button', { name: '忽略' }))
     expect(onDismiss).toHaveBeenCalledTimes(1)
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/entries$/),
+      expect.anything()
+    )
     vi.unstubAllGlobals()
   })
 })

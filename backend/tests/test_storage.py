@@ -2,7 +2,11 @@ from datetime import datetime
 
 import pytest
 
-from kate_cortex.storage import StorageError
+from kate_cortex.storage import (
+    CollectionExists,
+    CollectionNotFound,
+    StorageError,
+)
 
 
 def today_prefix():
@@ -13,16 +17,14 @@ class TestCreate:
     def test_creates_file_and_index_with_chinese_title(self, storage, env):
         entry = storage.create_entry(
             title="数据库连接池配置",
-            type="note",
-            tags=["python"],
             source="manual",
             content="使用 SQLAlchemy 的连接池。",
         )
 
         assert entry.id == f"kc_{today_prefix()}_001"
         assert entry.slug == "shu-ju-ku-lian-jie-chi-pei-zhi"
-        assert entry.type == "note"
         assert entry.source == "manual"
+        assert entry.collections == []
 
         md_file = env.vault_path / entry.file_path
         assert md_file.is_file()
@@ -33,40 +35,36 @@ class TestCreate:
         assert storage.get_entry(entry.id) is not None
 
     def test_same_day_entries_increment_sequence(self, storage):
-        first = storage.create_entry(
-            title="第一条", type="note", tags=[], source="manual", content="a"
-        )
-        second = storage.create_entry(
-            title="第二条", type="note", tags=[], source="manual", content="b"
-        )
+        first = storage.create_entry(title="第一条", source="manual", content="a")
+        second = storage.create_entry(title="第二条", source="manual", content="b")
 
         assert first.id.endswith("_001")
         assert second.id.endswith("_002")
         assert first.slug != second.slug
 
     def test_slug_conflict_appends_suffix(self, storage):
-        first = storage.create_entry(
-            title="重复标题", type="note", tags=[], source="manual", content="a"
-        )
-        second = storage.create_entry(
-            title="重复标题", type="note", tags=[], source="manual", content="b"
-        )
+        first = storage.create_entry(title="重复标题", source="manual", content="a")
+        second = storage.create_entry(title="重复标题", source="manual", content="b")
 
         assert first.slug == "chong-fu-biao-ti"
         assert second.slug == "chong-fu-biao-ti-2"
 
-    def test_deduplicates_tags(self, storage):
+    def test_create_with_collections_persists_to_frontmatter(self, storage, env):
         entry = storage.create_entry(
-            title="标签去重", type="note", tags=["redis", "redis", "bug"],
-            source="manual", content="x",
+            title="投资复盘",
+            source="manual",
+            content="内容",
+            collections=["金融", "金融", "复盘"],
         )
-        assert entry.tags == ["redis", "bug"]
+        assert entry.collections == ["金融", "复盘"]
 
-    def test_rejects_unknown_type(self, storage):
+        text = (env.vault_path / entry.file_path).read_text(encoding="utf-8")
+        assert "collections:" in text
+        assert "- 金融" in text
+
+    def test_rejects_unknown_source(self, storage):
         with pytest.raises(StorageError):
-            storage.create_entry(
-                title="t", type="snippet", tags=[], source="manual", content="x"
-            )
+            storage.create_entry(title="t", source="web", content="x")
 
 
 class TestGet:
@@ -90,17 +88,12 @@ class TestList:
             "Redis pipeline 事务模式踩坑",
         ]
 
-    def test_filters_by_type(self, seeded):
+    def test_filters_by_collection(self, seeded):
         storage, _, _ = seeded
-        items, total = storage.list_entries(type="howto")
+        items, total = storage.list_entries(collection="编程")
         assert total == 1
         assert items[0].title == "Redis pipeline 事务模式踩坑"
-
-    def test_filters_by_tag(self, seeded):
-        storage, _, _ = seeded
-        items, total = storage.list_entries(tag="fastapi")
-        assert total == 1
-        assert items[0].title == "FastAPI middleware 设计"
+        assert items[0].collections == ["编程"]
 
     def test_pagination(self, seeded):
         storage, _, _ = seeded
@@ -221,3 +214,140 @@ class TestSync:
 
         refreshed = storage.get_entry(second.id)
         assert "被外部编辑器改过的内容。" in refreshed.content
+
+
+class TestCollections:
+    def test_create_list_and_duplicate(self, storage):
+        storage.create_collection("金融")
+        storage.create_collection("情感")
+
+        assert storage.list_collections() == [("情感", 0), ("金融", 0)]
+
+        with pytest.raises(CollectionExists):
+            storage.create_collection("金融")
+        with pytest.raises(StorageError):
+            storage.create_collection("  ")
+
+    def test_empty_collection_survives_entry_membership_clear(self, storage, seeded):
+        storage, first, _ = seeded
+        storage.update_entry(first.id, collections=[])
+
+        assert ("编程", 0) in storage.list_collections()
+
+    def test_update_entry_replaces_collections(self, storage, seeded):
+        storage, first, second = seeded
+        storage.create_collection("复盘")
+
+        storage.update_entry(first.id, collections=["复盘", "编程"])
+        assert storage.get_entry(first.id).collections == ["复盘", "编程"]
+
+        storage.update_entry(first.id, collections=["复盘"])
+        assert storage.get_entry(first.id).collections == ["复盘"]
+
+        items, total = storage.list_entries(collection="编程")
+        assert total == 0
+
+    def test_rename_rewrites_member_frontmatter(self, storage, env, seeded):
+        storage, first, _ = seeded
+
+        count = storage.rename_collection("编程", "技术")
+
+        assert count == 1
+        assert storage.get_entry(first.id).collections == ["技术"]
+        text = (env.vault_path / first.file_path).read_text(encoding="utf-8")
+        assert "- 技术" in text and "- 编程" not in text
+        assert ("技术", 1) in storage.list_collections()
+
+    def test_rename_to_existing_name_raises(self, storage, seeded):
+        storage, _, _ = seeded
+        storage.create_collection("复盘")
+        with pytest.raises(CollectionExists):
+            storage.rename_collection("编程", "复盘")
+
+    def test_rename_missing_raises(self, storage):
+        with pytest.raises(CollectionNotFound):
+            storage.rename_collection("不存在", "新名字")
+
+    def test_delete_keeps_entries_but_clears_membership(self, storage, env, seeded):
+        storage, first, _ = seeded
+
+        count = storage.delete_collection("编程")
+
+        assert count == 1
+        entry = storage.get_entry(first.id)
+        assert entry is not None
+        assert entry.collections == []
+        assert "collections:" not in (
+            env.vault_path / entry.file_path
+        ).read_text(encoding="utf-8")
+        assert storage.list_collections() == []
+        _, total = storage.list_entries()
+        assert total == 2
+
+    def test_delete_missing_raises(self, storage):
+        with pytest.raises(CollectionNotFound):
+            storage.delete_collection("不存在")
+
+
+LEGACY_ENTRY_MD = """---
+id: kc_20260801_001
+slug: jiao-yu-bei-jing
+title: 教育背景
+tags:
+- 个人信息
+- redis
+source: manual
+created_at: "2026-08-01T10:00:00+08:00"
+updated_at: "2026-08-01T10:00:00+08:00"
+---
+本科计算机专业。
+"""
+
+
+class TestProfileMigration:
+    def _seed_legacy_entry(self, env, storage):
+        md_file = env.vault_path / "2026" / "08" / "20260801-001-jiao-yu-bei-jing.md"
+        md_file.parent.mkdir(parents=True, exist_ok=True)
+        md_file.write_text(LEGACY_ENTRY_MD, encoding="utf-8")
+        storage.reindex()
+        return md_file
+
+    def test_moves_profile_tag_to_collection(self, storage, env):
+        md_file = self._seed_legacy_entry(env, storage)
+
+        migrated = storage.migrate_profile_to_collection()
+
+        assert migrated == 1
+        entry = storage.get_entry("kc_20260801_001")
+        assert entry is not None
+        assert "个人信息" in entry.collections
+        assert entry.tags == ["redis"]
+        assert ("个人信息", 1) in storage.list_collections()
+
+        text = md_file.read_text(encoding="utf-8")
+        assert "- 个人信息" in text
+        assert "redis" in text
+        assert entry.created_at == "2026-08-01T10:00:00+08:00"
+        assert entry.updated_at == "2026-08-01T10:00:00+08:00"
+
+    def test_idempotent_rerun_returns_zero(self, storage, env):
+        self._seed_legacy_entry(env, storage)
+        storage.migrate_profile_to_collection()
+
+        assert storage.migrate_profile_to_collection() == 0
+
+    def test_untouched_without_profile_tag(self, storage, env):
+        storage.create_entry(title="普通条目", source="manual", content="x")
+
+        assert storage.migrate_profile_to_collection() == 0
+        items, total = storage.list_entries()
+        assert total == 1
+
+    def test_keeps_existing_collection_membership(self, storage, env):
+        md_file = self._seed_legacy_entry(env, storage)
+
+        storage.migrate_profile_to_collection()
+
+        entry = storage.get_entry("kc_20260801_001")
+        assert entry.collections == ["个人信息"]
+        assert "- 个人信息" in md_file.read_text(encoding="utf-8")

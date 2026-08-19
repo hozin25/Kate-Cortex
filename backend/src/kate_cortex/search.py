@@ -39,19 +39,12 @@ class Search:
             return ""
         return " AND ".join(f'"{t}"' for t in tokens)
 
-    def index_entry(
-        self, entry_id: str, title: str, content: str, tags: list[str]
-    ) -> None:
+    def index_entry(self, entry_id: str, title: str, content: str) -> None:
         self.remove_entry(entry_id)
         self._conn.execute(
-            "INSERT INTO entries_fts (title_tokens, content_tokens, tag_tokens, entry_id)"
-            " VALUES (?, ?, ?, ?)",
-            (
-                self.tokenize(title),
-                self.tokenize(content),
-                " ".join(self.tokenize(tag) for tag in tags),
-                entry_id,
-            ),
+            "INSERT INTO entries_fts (title_tokens, content_tokens, entry_id)"
+            " VALUES (?, ?, ?)",
+            (self.tokenize(title), self.tokenize(content), entry_id),
         )
 
     def remove_entry(self, entry_id: str) -> None:

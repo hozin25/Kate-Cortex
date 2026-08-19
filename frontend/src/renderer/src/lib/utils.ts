@@ -15,17 +15,3 @@ export function formatTime(iso: string): string {
     minute: '2-digit'
   })
 }
-
-export const TYPE_LABELS: Record<string, string> = {
-  note: '笔记',
-  clip: '剪藏',
-  decision: '决策',
-  howto: '方法'
-}
-
-export const TYPE_STYLES: Record<string, string> = {
-  note: 'bg-sky-400/15 text-sky-300 border-sky-400/25',
-  clip: 'bg-amber-400/15 text-amber-300 border-amber-400/25',
-  decision: 'bg-rose-400/15 text-rose-300 border-rose-400/25',
-  howto: 'bg-emerald-400/15 text-emerald-300 border-emerald-400/25'
-}

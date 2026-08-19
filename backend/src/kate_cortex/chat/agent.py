@@ -23,9 +23,12 @@ def run_agent_chat(
     history: list[dict],
     rag_snippets: list,
     profile_snippets: list | None = None,
+    collection_names: list[str] | None = None,
 ) -> Iterator[str]:
     system_prompt = build_system_prompt(
-        rag_snippets=rag_snippets, profile_snippets=profile_snippets
+        rag_snippets=rag_snippets,
+        profile_snippets=profile_snippets,
+        collections=collection_names,
     )
     messages = [{"role": "system", "content": system_prompt}, *history]
     knowledge_refs = [s.entry_id for s in rag_snippets]

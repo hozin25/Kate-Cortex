@@ -30,6 +30,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     )
     database = db_connect(config.db_path)
     storage = Storage(config=config, db=database, search=Search(database.conn))
+    _run_startup_migrations(database, storage)
     app.state.config = config
     app.state.db = database
     app.state.storage = storage
@@ -37,15 +38,23 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.settings_service = SettingsService(database.conn)
     app.state.provider_factory = ProviderFactory(app.state.settings_service)
 
-    from .routes import chat, entries, health, settings, sync, tags
+    from .routes import chat, collections, entries, health, settings, sync
 
     app.include_router(health.router, prefix="/api")
     app.include_router(entries.router, prefix="/api")
-    app.include_router(tags.router, prefix="/api")
+    app.include_router(collections.router, prefix="/api")
     app.include_router(sync.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
     return app
+
+
+def _run_startup_migrations(database, storage) -> None:
+    """存量「个人信息」tag → 合集迁移（幂等，每次启动跑）；
+    v3 迁移当天 FTS 被重建为空表，需从 md 真相源全量重灌一次"""
+    storage.migrate_profile_to_collection()
+    if database.migrated_from is not None and database.migrated_from < 3:
+        storage.reindex()
 
 
 app = create_app()

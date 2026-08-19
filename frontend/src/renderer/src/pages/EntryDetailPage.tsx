@@ -1,10 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { ArrowLeft, ArrowUpLeft, Link2, MessagesSquare, Pencil, Trash2 } from 'lucide-react'
+import {
+  ArrowLeft,
+  ArrowUpLeft,
+  FolderOpen,
+  Link2,
+  MessagesSquare,
+  Pencil,
+  Trash2
+} from 'lucide-react'
 import { api } from '@renderer/api/client'
 import { MarkdownView } from '@renderer/components/common/MarkdownView'
-import { Spinner, TypeBadge } from '@renderer/components/common/Badges'
+import { Spinner } from '@renderer/components/common/Badges'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { toast } from '@renderer/stores/toast'
 import { formatTime } from '@renderer/lib/utils'
@@ -121,7 +129,16 @@ export function EntryDetailPage(): React.JSX.Element {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <TypeBadge type={entry.type} />
+          {entry.collections.map((c) => (
+            <Link
+              key={c}
+              to={`/library?collection=${encodeURIComponent(c)}`}
+              className="flex items-center gap-1 rounded-full border border-aurora-indigo/25 bg-aurora-indigo/10 px-2 py-0.5 text-[11px] text-aurora-indigo/90 transition hover:bg-aurora-indigo/20"
+            >
+              <FolderOpen className="size-2.5" />
+              {c}
+            </Link>
+          ))}
           {entry.source === 'chat' && entry.conversation_id && (
             <button
               onClick={() => navigate(`/?session=${entry.conversation_id}`)}
@@ -131,15 +148,6 @@ export function EntryDetailPage(): React.JSX.Element {
               来自对话 · 查看
             </button>
           )}
-          {entry.tags.map((t) => (
-            <Link
-              key={t}
-              to={`/library?tag=${encodeURIComponent(t)}`}
-              className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] text-zinc-400 transition hover:text-zinc-200"
-            >
-              #{t}
-            </Link>
-          ))}
           <span className="ml-auto text-[11px] text-zinc-600">
             创建 {formatTime(entry.created_at)} · 更新 {formatTime(entry.updated_at)}
           </span>
@@ -162,7 +170,6 @@ export function EntryDetailPage(): React.JSX.Element {
                   to={`/entries/${b.id}`}
                   className="glass-deep flex items-center gap-2 rounded-xl px-3 py-2 text-[13px] text-zinc-300 transition hover:text-zinc-100"
                 >
-                  <TypeBadge type={b.type} />
                   <span className="truncate">{b.title}</span>
                 </Link>
               ))}

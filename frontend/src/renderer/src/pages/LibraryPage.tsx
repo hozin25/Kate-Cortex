@@ -1,24 +1,30 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { Library, Plus, Search, Tag } from 'lucide-react'
-import { TypeBadge, Spinner } from '@renderer/components/common/Badges'
+import { FolderOpen, Library, Pencil, Plus, Search, X } from 'lucide-react'
+import { Spinner } from '@renderer/components/common/Badges'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { useLibraryStore } from '@renderer/stores/library'
 import { toast } from '@renderer/stores/toast'
-import { cn, formatTime, TYPE_LABELS } from '@renderer/lib/utils'
+import { cn, formatTime } from '@renderer/lib/utils'
 
 export function LibraryPage(): React.JSX.Element {
   const store = useLibraryStore()
-  const { items, total, tags, typeFilter, tagFilter, query, loading } = store
+  const { items, total, collections, collectionFilter, query, loading } = store
+  const [searchParams] = useSearchParams()
   const [searchDraft, setSearchDraft] = useState(query)
+  const [creating, setCreating] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [renaming, setRenaming] = useState<string | null>(null)
+  const [renameDraft, setRenameDraft] = useState('')
 
   useEffect(() => {
+    store.setCollectionFilter(searchParams.get('collection'))
     void store
       .load()
       .catch((err) => toast.error(err instanceof Error ? err.message : '知识库加载失败'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [searchParams])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -27,6 +33,46 @@ export function LibraryPage(): React.JSX.Element {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchDraft])
+
+  const handleCreate = async (): Promise<void> => {
+    const name = newName.trim()
+    if (!name) {
+      setCreating(false)
+      return
+    }
+    try {
+      await store.createCollection(name)
+      toast.success(`已创建合集「${name}」`)
+      setNewName('')
+      setCreating(false)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '创建失败')
+    }
+  }
+
+  const handleRename = async (oldName: string): Promise<void> => {
+    const name = renameDraft.trim()
+    setRenaming(null)
+    if (!name || name === oldName) return
+    try {
+      await store.renameCollection(oldName, name)
+      toast.success(`已重命名为「${name}」`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '重命名失败')
+    }
+  }
+
+  const handleDelete = async (name: string): Promise<void> => {
+    if (!window.confirm(`删除合集「${name}」？合集内的条目会保留，仅移出合集。`)) return
+    try {
+      await store.deleteCollection(name)
+      toast.info(`已删除合集「${name}」`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '删除失败')
+    }
+  }
+
+  const hasFilter = Boolean(query || collectionFilter)
 
   return (
     <div className="flex h-full min-h-0 flex-col px-8 py-6">
@@ -49,56 +95,81 @@ export function LibraryPage(): React.JSX.Element {
           <input
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder="全文搜索标题、正文、标签…"
+            placeholder="全文搜索标题、正文…"
             className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
           />
           {loading && <Spinner className="size-3.5" />}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <FilterChip
-            active={typeFilter === null}
-            onClick={() => store.setTypeFilter(null)}
+            active={collectionFilter === null}
+            onClick={() => store.setCollectionFilter(null)}
             label="全部"
           />
-          {Object.entries(TYPE_LABELS).map(([type, label]) => (
-            <FilterChip
-              key={type}
-              active={typeFilter === type}
-              onClick={() => store.setTypeFilter(type)}
-              label={label}
+          {collections.map((c) =>
+            renaming === c.name ? (
+              <input
+                key={c.name}
+                autoFocus
+                value={renameDraft}
+                onChange={(e) => setRenameDraft(e.target.value)}
+                onBlur={() => void handleRename(c.name)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void handleRename(c.name)
+                  if (e.key === 'Escape') setRenaming(null)
+                }}
+                className="w-24 rounded-lg border border-aurora-indigo/40 bg-white/[0.06] px-2 py-1.5 text-xs text-zinc-100 outline-none"
+              />
+            ) : (
+              <CollectionChip
+                key={c.name}
+                name={c.name}
+                count={c.count}
+                active={collectionFilter === c.name}
+                onClick={() =>
+                  store.setCollectionFilter(collectionFilter === c.name ? null : c.name)
+                }
+                onRenameStart={() => {
+                  setRenaming(c.name)
+                  setRenameDraft(c.name)
+                }}
+                onDelete={() => void handleDelete(c.name)}
+              />
+            )
+          )}
+          {creating ? (
+            <input
+              autoFocus
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onBlur={() => void handleCreate()}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void handleCreate()
+                if (e.key === 'Escape') setCreating(false)
+              }}
+              placeholder="合集名称"
+              className="w-24 rounded-lg border border-aurora-indigo/40 bg-white/[0.06] px-2 py-1.5 text-xs text-zinc-100 outline-none placeholder:text-zinc-600"
             />
-          ))}
+          ) : (
+            <button
+              onClick={() => setCreating(true)}
+              title="新建合集"
+              className="flex items-center gap-1 rounded-lg border border-dashed border-white/15 px-2 py-1.5 text-xs text-zinc-500 transition hover:border-aurora-indigo/40 hover:text-zinc-300"
+            >
+              <Plus className="size-3" />
+              合集
+            </button>
+          )}
         </div>
       </div>
-
-      {tags.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-          <Tag className="size-3 text-zinc-600" />
-          {tags.map((t) => (
-            <button
-              key={t.name}
-              onClick={() => store.setTagFilter(tagFilter === t.name ? null : t.name)}
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[11px] transition',
-                tagFilter === t.name
-                  ? 'border-aurora-cyan/40 bg-aurora-cyan/15 text-aurora-cyan'
-                  : 'border-white/[0.08] bg-white/[0.03] text-zinc-500 hover:text-zinc-300'
-              )}
-            >
-              #{t.name}
-              <span className="ml-1 text-[9px] opacity-60">{t.count}</span>
-            </button>
-          ))}
-        </div>
-      )}
 
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1">
         {items.length === 0 && !loading ? (
           <EmptyState
             icon={<Library className="size-6" />}
-            title={query || typeFilter || tagFilter ? '没有匹配的条目' : '知识库还是空的'}
+            title={hasFilter ? '没有匹配的条目' : '知识库还是空的'}
             hint={
-              query || typeFilter || tagFilter
+              hasFilter
                 ? '换个关键词或清除过滤条件试试'
                 : '在对话里让 Kate「记一下」，或点击右上角手动新建'
             }
@@ -121,7 +192,6 @@ export function LibraryPage(): React.JSX.Element {
                   className="glass block h-full rounded-2xl p-4 transition hover:border-aurora-indigo/30 hover:bg-white/[0.07]"
                 >
                   <div className="flex items-center gap-2">
-                    <TypeBadge type={entry.type} />
                     {entry.source === 'chat' && (
                       <span className="rounded-full bg-aurora-violet/15 px-1.5 py-0.5 text-[10px] text-aurora-violet">
                         对话沉淀
@@ -134,14 +204,15 @@ export function LibraryPage(): React.JSX.Element {
                   <h3 className="mt-2 line-clamp-2 text-sm font-medium leading-6 text-zinc-100">
                     {entry.title}
                   </h3>
-                  {entry.tags.length > 0 && (
+                  {entry.collections.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {entry.tags.slice(0, 4).map((t) => (
+                      {entry.collections.map((c) => (
                         <span
-                          key={t}
-                          className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-500"
+                          key={c}
+                          className="flex items-center gap-0.5 rounded-md border border-aurora-indigo/20 bg-aurora-indigo/10 px-1.5 py-0.5 text-[10px] text-aurora-indigo/90"
                         >
-                          #{t}
+                          <FolderOpen className="size-2.5" />
+                          {c}
                         </span>
                       ))}
                     </div>
@@ -175,5 +246,55 @@ function FilterChip({ active, label, onClick }: FilterChipProps): React.JSX.Elem
     >
       {label}
     </button>
+  )
+}
+
+interface CollectionChipProps {
+  name: string
+  count: number
+  active: boolean
+  onClick: () => void
+  onRenameStart: () => void
+  onDelete: () => void
+}
+
+function CollectionChip({
+  name,
+  count,
+  active,
+  onClick,
+  onRenameStart,
+  onDelete
+}: CollectionChipProps): React.JSX.Element {
+  return (
+    <span
+      className={cn(
+        'group relative inline-flex items-center rounded-lg border py-1.5 pl-2.5 pr-2 text-xs transition',
+        active
+          ? 'border-aurora-indigo/40 bg-aurora-indigo/15 text-zinc-100'
+          : 'border-white/[0.08] bg-white/[0.03] text-zinc-500 hover:text-zinc-300'
+      )}
+    >
+      <button onClick={onClick}>
+        {name}
+        <span className="ml-1 text-[9px] opacity-60">{count}</span>
+      </button>
+      <span className="ml-1 hidden items-center gap-0.5 group-hover:inline-flex">
+        <button
+          onClick={onRenameStart}
+          title="重命名"
+          className="text-zinc-600 transition hover:text-zinc-200"
+        >
+          <Pencil className="size-3" />
+        </button>
+        <button
+          onClick={onDelete}
+          title="删除合集"
+          className="text-zinc-600 transition hover:text-rose-300"
+        >
+          <X className="size-3.5" />
+        </button>
+      </span>
+    </span>
   )
 }

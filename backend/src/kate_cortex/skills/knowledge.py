@@ -6,22 +6,20 @@ _PARAMS = {
     "type": "object",
     "properties": {
         "title": {"type": "string", "description": "知识标题（简洁，可中文）"},
-        "type": {
-            "type": "string",
-            "enum": ["note", "clip", "decision", "howto"],
-            "description": "知识类型",
-        },
-        "tags": {
+        "collections": {
             "type": "array",
             "items": {"type": "string"},
-            "description": "标签，3~5 个，小写",
+            "description": (
+                "建议收录进的合集名称，只能从系统提示「知识库合集」小节列出的"
+                "已有合集中选择；没有合适的合集则不传此参数"
+            ),
         },
         "content_markdown": {
             "type": "string",
             "description": "总结后的正文 markdown。聚焦当前讨论主题，保留结论/方法/代码，剔除寒暄与过程。",
         },
     },
-    "required": ["title", "type", "tags", "content_markdown"],
+    "required": ["title", "content_markdown"],
 }
 
 TOOLS = [
@@ -53,25 +51,22 @@ TOOLS = [
 def save_knowledge(storage, args: dict, conversation_id: str) -> dict:
     entry = storage.create_entry(
         title=args["title"],
-        type=args["type"],
-        tags=args.get("tags") or [],
         source="chat",
         content=args["content_markdown"],
+        collections=args.get("collections") or [],
         conversation_id=conversation_id,
     )
     return {
         "entry_id": entry.id,
         "slug": entry.slug,
         "title": entry.title,
-        "type": entry.type,
-        "tags": entry.tags,
+        "collections": entry.collections,
     }
 
 
 def suggest_save(args: dict) -> dict:
     return {
         "title": args["title"],
-        "type": args["type"],
-        "tags": args.get("tags") or [],
+        "collections": args.get("collections") or [],
         "preview": args["content_markdown"][:PREVIEW_CHARS],
     }

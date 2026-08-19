@@ -19,14 +19,12 @@ def tool_call_deltas(call_id, name, args: dict) -> list:
 
 SAVE_ARGS = {
     "title": "连接池配置要点",
-    "type": "howto",
-    "tags": ["python"],
+    "collections": ["编程"],
     "content_markdown": "使用 pool_pre_ping 避免断连。",
 }
 SUGGEST_ARGS = {
     "title": "选 SQLite 的理由",
-    "type": "decision",
-    "tags": ["选型"],
+    "collections": ["选型复盘"],
     "content_markdown": "单机个人应用，零运维，够用。",
 }
 
@@ -71,7 +69,7 @@ class TestSaveKnowledgeFlow:
         assert names == ["citations", "tool_result", "delta", "done"]
         tool_result = next(data for name, data in events if name == "tool_result")
         assert tool_result["title"] == "连接池配置要点"
-        assert tool_result["type"] == "howto"
+        assert tool_result["collections"] == ["编程"]
         assert tool_result["entry_id"].startswith("kc_")
 
         entries = client.get("/api/entries").json()
@@ -139,8 +137,7 @@ class TestSuggestSaveFlow:
             "/api/entries",
             json={
                 "title": "选 SQLite 的理由",
-                "type": "decision",
-                "tags": ["选型"],
+                "collections": ["选型复盘"],
                 "content": "单机个人应用，零运维，够用。",
                 "source": "chat",
                 "conversation_id": session_id,
@@ -225,8 +222,6 @@ class TestRagIntegration:
             "/api/entries",
             json={
                 "title": "连接池调优方案",
-                "type": "howto",
-                "tags": ["python"],
                 "content": "max_size 设为 20，pool_pre_ping 开启。",
                 "source": "manual",
             },
@@ -253,8 +248,6 @@ class TestRagIntegration:
             "/api/entries",
             json={
                 "title": "连接池调优方案",
-                "type": "howto",
-                "tags": [],
                 "content": "max_size 设为 20。",
                 "source": "manual",
             },
@@ -286,8 +279,7 @@ class TestRagIntegration:
             "/api/entries",
             json={
                 "title": "用户教育背景",
-                "type": "note",
-                "tags": ["个人信息"],
+                "collections": ["个人信息"],
                 "content": "用户是软件工程专业的学生。",
                 "source": "manual",
             },
@@ -296,8 +288,6 @@ class TestRagIntegration:
             "/api/entries",
             json={
                 "title": "连接池调优方案",
-                "type": "howto",
-                "tags": ["python"],
                 "content": "max_size 设为 20。",
                 "source": "manual",
             },

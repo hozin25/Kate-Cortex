@@ -32,7 +32,7 @@
 ├───────────────────────────────────────────────────────────────┤
 │  FastAPI 本地服务 (127.0.0.1:1738)                             │
 │   ├─ /api/entries   知识库 CRUD                                │
-│   ├─ /api/tags      标签                                       │
+│   ├─ /api/collections 合集                                      │
 │   ├─ /api/chat/*    会话 + SSE 流式对话                        │
 │   ├─ /api/settings  Provider / API key / RAG 开关              │
 │   └─ /api/sync      重新索引                                   │
@@ -46,7 +46,7 @@
 ├───────────────────────────────────────────────────────────────┤
 │  存储层                                                        │
 │   ├─ vault/         markdown 知识文件（按年月归档）            │
-│   ├─ index.sqlite   条目/标签/链接/FTS 索引 + 对话历史         │
+│   ├─ index.sqlite   条目/合集/链接/FTS 索引 + 对话历史          │
 │   └─ .trash/        软删除区                                   │
 └───────────────────────────────────────────────────────────────┘
 ```
@@ -127,9 +127,8 @@ vault/
 ---
 id: kc_20260817_001
 slug: redis-pipeline-bug
-type: howto
 title: Redis pipeline 在事务模式下不返回结果
-tags: [redis, bug]
+collections: [编程]
 language: python
 source: chat
 conversation: kc_conv_a1b2c3
@@ -142,7 +141,9 @@ updated_at: 2026-08-17T10:30:00+08:00
 
 | 字段 | 说明（相对 v0.1 的变化） |
 |---|---|
-| `type` | **改为** `note` / `clip` / `decision` / `howto`（snippet 泛化为 howto） |
+| `type` | **已移除**（v2 起无固定分类，旧文件中的 type 字段解析时忽略） |
+| `tags` | **已移除**（v3 起合集为唯一组织机制）。旧文件中的 tags 解析时原样保留在 md 中（透传，不再读写/索引/展示）；「个人信息」tag 由启动迁移转入合集 |
+| `collections` | 可选。所属合集名列表（多对多），与索引库双写 |
 | `language` | 降为可选元数据（不再绑定独立类型） |
 | `source` | **改为** `manual` / `chat` / `import` |
 | `conversation` | **新增**，可选。对话沉淀时记录来源会话，详情页可跳回 |
@@ -150,12 +151,11 @@ updated_at: 2026-08-17T10:30:00+08:00
 ### 3.3 SQLite Schema
 
 ```sql
--- ── 知识库（沿用 v0.1，type/source 枚举更新，新增 conversation_id）──
+-- ── 知识库（v3：移除 tags 两表，合集为唯一组织机制）──
 CREATE TABLE entries (
   id              TEXT PRIMARY KEY,     -- kc_YYYYMMDD_NNN
   slug            TEXT UNIQUE NOT NULL,
   title           TEXT NOT NULL,
-  type            TEXT NOT NULL CHECK (type IN ('note','clip','decision','howto')),
   project         TEXT,
   language        TEXT,
   source          TEXT NOT NULL CHECK (source IN ('manual','chat','import')),
@@ -164,21 +164,21 @@ CREATE TABLE entries (
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL
 );
-CREATE INDEX idx_entries_type    ON entries(type);
 CREATE INDEX idx_entries_created ON entries(created_at DESC);
 CREATE INDEX idx_entries_conv    ON entries(conversation_id);
 
-CREATE TABLE tags (
+CREATE TABLE collections (          -- 用户自建合集；空合集合法，不做孤儿清理
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE NOT NULL
+  name TEXT UNIQUE NOT NULL,
+  created_at TEXT NOT NULL
 );
 
-CREATE TABLE entry_tags (
-  entry_id TEXT NOT NULL,
-  tag_id   INTEGER NOT NULL,
-  PRIMARY KEY (entry_id, tag_id),
-  FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
-  FOREIGN KEY (tag_id)   REFERENCES tags(id)    ON DELETE CASCADE
+CREATE TABLE entry_collections (
+  entry_id      TEXT NOT NULL,
+  collection_id INTEGER NOT NULL,
+  PRIMARY KEY (entry_id, collection_id),
+  FOREIGN KEY (entry_id)      REFERENCES entries(id)     ON DELETE CASCADE,
+  FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
 );
 
 CREATE TABLE entry_links (
@@ -190,12 +190,11 @@ CREATE TABLE entry_links (
 -- 反向链接查询：entry_links JOIN entries tgt ON tgt.slug = to_slug JOIN entries e ON e.id = from_id
 
 -- ── 中文全文检索：FTS5 + jieba 预分词 ──
--- 写入时 title/content/tags 经 jieba 切词、空格连接后存入 *_tokens 列；
+-- 写入时 title/content 经 jieba 切词、空格连接后存入 *_tokens 列；
 -- 查询时对关键词同样切词后 MATCH
 CREATE VIRTUAL TABLE entries_fts USING fts5(
   title_tokens,
   content_tokens,
-  tag_tokens,
   entry_id UNINDEXED
 );
 
@@ -239,6 +238,17 @@ CREATE TABLE settings (
 对话数据（conversations/messages）只存 SQLite，无 md 对应物——它是会话日志而非知识资产；
 后续如需导出走 v0.2。
 
+### 3.5 v3 迁移（2026-08-19：删除标签，合集成为唯一组织机制）
+
+- **schema v2 → v3**（`db.py _migrate`）：DROP `tags` / `entry_tags`；`entries_fts`
+  去掉 `tag_tokens` 列（FTS5 虚表无法改列，整表重建），迁移当日启动时从 md 真相源
+  全量 `reindex()` 重灌（`Database.migrated_from` 门控，仅迁移发生时执行一次）
+- **存量数据迁移**（`storage.migrate_profile_to_collection()`，每次启动幂等执行）：
+  frontmatter `tags` 含 `个人信息` 的条目 → 收进 `个人信息` 合集并从 tags 移除该项；
+  时间戳不变；其余条目的 tags 原样保留在 md 中（frontmatter 层透传，系统不再
+  读写/索引/展示）
+- **档案注入识别**：`tag=个人信息` → `个人信息` 合集（见 §7）
+
 ---
 
 ## 4. API 设计
@@ -248,16 +258,18 @@ CREATE TABLE settings (
 ```
 # 知识库
 POST   /api/entries                     创建
-GET    /api/entries                     ?type=&tag=&q=&limit=&offset=
+GET    /api/entries                     ?collection=&q=&limit=&offset=
 GET    /api/entries/:id
 PUT    /api/entries/:id
 DELETE /api/entries/:id                 软删除
 POST   /api/entries/:id/restore         从 .trash 恢复
 GET    /api/entries/:id/links           反向链接
 
-# 标签
-GET    /api/tags
-DELETE /api/tags/:name
+# 合集（用户自建，多对多收录条目，唯一组织机制）
+GET    /api/collections                 [{name, count}]
+POST   /api/collections                 {name}，重名 409
+PUT    /api/collections/:name           {name} 重命名（重写成员 frontmatter）
+DELETE /api/collections/:name           删除合集，成员条目保留
 
 # 对话
 POST   /api/chat/sessions               {provider, model, title?}
@@ -285,8 +297,8 @@ GET    /api/health                      {app: "kate-cortex", version}
 |---|---|---|
 | `citations` | `{entries: [{id, title, slug}]}` | 消息开始，RAG 命中的条目 |
 | `delta` | `{text}` | 流式文本片段 |
-| `tool_result` | `{entry_id, title, type, tags}` | save_knowledge 已入库 → 前端渲染保存卡片 |
-| `suggest` | `{title, type, tags, preview}` | AI 建议卡片（**未入库**，等用户确认） |
+| `tool_result` | `{entry_id, title, collections}` | save_knowledge 已入库 → 前端渲染保存卡片 |
+| `suggest` | `{title, collections, preview}` | AI 建议卡片（**未入库**，等用户确认；合集建议可改可拒） |
 | `done` | `{message_id}` | 消息落库完成 |
 | `error` | `{message}` | 出错 |
 
@@ -328,8 +340,7 @@ providers/
   "description": "总结当前对话中的有价值内容并存入知识库。当用户明确要求记下、保存、沉淀某段讨论时调用。",
   "parameters": {
     "title": "知识标题（简洁，可中文）",
-    "type": "note | clip | decision | howto",
-    "tags": ["标签，3~5 个，小写"],
+    "collections": ["可选。建议收录的合集，只能从系统提示列出的已有合集中选择"],
     "content_markdown": "总结后的正文。聚焦当前讨论主题，保留结论/方法/代码，剔除寒暄与过程。"
   }
 }
@@ -362,7 +373,7 @@ providers/
 [人设与回答风格]
 [工具使用规则：用户说"记一下"等 → 立即 save_knowledge；
  发现高价值结论/方法/决策 → suggest_save 建议，不擅自保存]
-[用户档案（常驻注入）：tag=个人信息 的条目；回答与用户本人相关的问题直接采用]
+[用户档案（常驻注入）：「个人信息」合集的条目；回答与用户本人相关的问题直接采用]
 [RAG 知识（可选注入）：以下来自用户知识库，回答可参考并注明来源条目标题]
 ```
 
@@ -375,8 +386,9 @@ providers/
   总预算 ≤ 2000 tokens
 - 注入：作为 system prompt 尾部知识段；`messages.knowledge_refs` 记录命中 id，
   前端渲染引用 chips（点击跳条目详情）
-- **用户档案常驻注入**（2026-08-18 增补）：tag 为 `个人信息` 的条目（按更新时间
-  取前 3 条）**无论 RAG 开关**都注入 system prompt（位于 RAG 知识段之前）。
+- **用户档案常驻注入**（2026-08-18 增补，2026-08-19 v3 改为合集识别）：收录于
+  `个人信息` **合集**的条目（按创建时间取前 3 条）**无论 RAG 开关**都注入
+  system prompt（位于 RAG 知识段之前）。
   动机：FTS5 是词元精确匹配，无法跨同义改写召回（问「我的身份」但条目里只有
   「学生/教育背景」），而用户画像类问题（我是谁/做什么的）是高频刚需，靠常驻
   注入兜底；档案条目不计入 `citations` / `knowledge_refs`
@@ -462,7 +474,7 @@ Kate-Cortex/
 │   │   ├── skills/
 │   │   │   └── knowledge.py    # save_knowledge / suggest_save
 │   │   ├── routes/
-│   │   │   ├── entries.py · tags.py · chat.py · settings.py · sync.py
+│   │   │   ├── entries.py · collections.py · chat.py · settings.py · sync.py
 │   │   └── providers/
 │   │       ├── base.py · deepseek.py · glm.py
 │   └── tests/

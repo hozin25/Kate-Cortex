@@ -14,7 +14,7 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "Redis 事务模式踩坑", "pipeline 事务模式下不返回结果。", ["redis"])
+        search.index_entry("e1", "Redis 事务模式踩坑", "pipeline 事务模式下不返回结果。")
 
         hits = search.query("事务模式")
 
@@ -25,19 +25,19 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "Redis 踩坑", "pipeline 事务模式不返回。", [])
-        search.index_entry("e2", "MySQL 踩坑", "连接池耗尽问题。", [])
+        search.index_entry("e1", "Redis 踩坑", "pipeline 事务模式不返回。")
+        search.index_entry("e2", "MySQL 踩坑", "连接池耗尽问题。")
 
         hits = search.query("事务 pipeline")
 
         assert [hit.entry_id for hit in hits] == ["e1"]
 
-    def test_matches_title_and_tags(self, tmp_path):
+    def test_matches_title_and_content(self, tmp_path):
         from kate_cortex import db as db_mod
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "连接池调优", "正文没这个词组。", ["性能"])
+        search.index_entry("e1", "连接池调优", "性能相关的正文内容。")
 
         assert search.query("调优")[0].entry_id == "e1"
         assert search.query("性能")[0].entry_id == "e1"
@@ -47,7 +47,7 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "标题", "内容", [])
+        search.index_entry("e1", "标题", "内容")
 
         assert search.query("完全无关的词") == []
 
@@ -56,7 +56,7 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "连接池调优方案", "max_size 设为 20。", [])
+        search.index_entry("e1", "连接池调优方案", "max_size 设为 20。")
 
         hits = search.query("连接池怎么调优")
 
@@ -67,7 +67,7 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "连接池", "内容", [])
+        search.index_entry("e1", "连接池", "内容")
         search.remove_entry("e1")
 
         assert search.query("连接池") == []
@@ -77,8 +77,8 @@ class TestQuery:
 
         database = db_mod.connect(tmp_path / "i.sqlite")
         search = Search(database.conn)
-        search.index_entry("e1", "旧标题", "旧内容", [])
-        search.index_entry("e1", "新标题", "新内容", [])
+        search.index_entry("e1", "旧标题", "旧内容")
+        search.index_entry("e1", "新标题", "新内容")
 
         assert search.query("旧标题") == []
         assert search.query("新标题")[0].entry_id == "e1"

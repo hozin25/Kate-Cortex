@@ -1,4 +1,3 @@
-export type EntryType = 'note' | 'clip' | 'decision' | 'howto'
 export type EntrySource = 'manual' | 'chat' | 'import'
 export type ProviderName = 'deepseek' | 'glm'
 
@@ -6,8 +5,7 @@ export interface EntrySummary {
   id: string
   slug: string
   title: string
-  type: string
-  tags: string[]
+  collections: string[]
   source: string
   language: string | null
   conversation_id: string | null
@@ -25,7 +23,7 @@ export interface EntryList {
   total: number
 }
 
-export interface TagCount {
+export interface CollectionCount {
   name: string
   count: number
 }
@@ -65,14 +63,12 @@ export interface SavedPayload {
   entry_id: string
   slug: string
   title: string
-  type: string
-  tags: string[]
+  collections: string[]
 }
 
 export interface SuggestPayload {
   title: string
-  type: string
-  tags: string[]
+  collections: string[]
   preview: string
 }
 

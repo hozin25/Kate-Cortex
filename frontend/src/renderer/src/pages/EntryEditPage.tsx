@@ -2,21 +2,20 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
-import { ArrowLeft, Save } from 'lucide-react'
+import { ArrowLeft, FolderOpen, Save } from 'lucide-react'
 import { api } from '@renderer/api/client'
-import { Spinner, TypeBadge } from '@renderer/components/common/Badges'
+import { Spinner } from '@renderer/components/common/Badges'
 import { toast } from '@renderer/stores/toast'
-import { cn, TYPE_LABELS } from '@renderer/lib/utils'
-import type { Entry, EntryType } from '@renderer/types'
+import { cn } from '@renderer/lib/utils'
+import type { CollectionCount, Entry } from '@renderer/types'
 
 interface FormState {
   title: string
-  type: EntryType
-  tags: string
+  collections: string[]
   content: string
 }
 
-const EMPTY_FORM: FormState = { title: '', type: 'note', tags: '', content: '' }
+const EMPTY_FORM: FormState = { title: '', collections: [], content: '' }
 
 export function EntryEditPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>()
@@ -26,6 +25,14 @@ export function EntryEditPage(): React.JSX.Element {
   const [original, setOriginal] = useState<FormState | null>(isNew ? EMPTY_FORM : null)
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
+  const [allCollections, setAllCollections] = useState<CollectionCount[]>([])
+
+  useEffect(() => {
+    api
+      .get<CollectionCount[]>('/collections')
+      .then(setAllCollections)
+      .catch(() => undefined)
+  }, [])
 
   useEffect(() => {
     if (isNew) return
@@ -34,8 +41,7 @@ export function EntryEditPage(): React.JSX.Element {
       .then((e) => {
         const state = {
           title: e.title,
-          type: e.type as EntryType,
-          tags: e.tags.join(', '),
+          collections: e.collections,
           content: e.content
         }
         setForm(state)
@@ -48,9 +54,17 @@ export function EntryEditPage(): React.JSX.Element {
   const dirty =
     original !== null &&
     (form.title !== original.title ||
-      form.type !== original.type ||
-      form.tags !== original.tags ||
+      form.collections.join(' ') !== original.collections.join(' ') ||
       form.content !== original.content)
+
+  const toggleCollection = (name: string): void => {
+    setForm((prev) => ({
+      ...prev,
+      collections: prev.collections.includes(name)
+        ? prev.collections.filter((c) => c !== name)
+        : [...prev.collections, name]
+    }))
+  }
 
   const handleSave = async (): Promise<void> => {
     if (!form.title.trim()) {
@@ -60,11 +74,7 @@ export function EntryEditPage(): React.JSX.Element {
     setSaving(true)
     const payload = {
       title: form.title.trim(),
-      type: form.type,
-      tags: form.tags
-        .split(/[,，]/)
-        .map((t) => t.trim())
-        .filter(Boolean),
+      collections: form.collections,
       content: form.content
     }
     try {
@@ -87,6 +97,10 @@ export function EntryEditPage(): React.JSX.Element {
       </div>
     )
   }
+
+  const selectable = Array.from(
+    new Set([...allCollections.map((c) => c.name), ...form.collections])
+  )
 
   return (
     <div className="flex h-full min-h-0 flex-col px-8 py-6">
@@ -122,26 +136,29 @@ export function EntryEditPage(): React.JSX.Element {
       </div>
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
-        {Object.entries(TYPE_LABELS).map(([type, label]) => (
-          <button key={type} onClick={() => setForm({ ...form, type: type as EntryType })}>
-            <TypeBadge
-              type={type}
-              className={cn(
-                'cursor-pointer px-3 py-1 transition',
-                form.type !== type && 'opacity-40 hover:opacity-70'
-              )}
-            />
-            <span className="sr-only">{label}</span>
-          </button>
-        ))}
-        <div className="glass ml-auto flex items-center gap-1.5 rounded-xl px-3 py-1.5">
-          <span className="text-[11px] text-zinc-500">标签</span>
-          <input
-            value={form.tags}
-            onChange={(e) => setForm({ ...form, tags: e.target.value })}
-            placeholder="逗号分隔，如 sqlite, 性能"
-            className="w-64 bg-transparent text-[13px] text-zinc-200 outline-none placeholder:text-zinc-700"
-          />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FolderOpen className="size-3 text-zinc-600" />
+          {selectable.length > 0 ? (
+            selectable.map((name) => {
+              const selected = form.collections.includes(name)
+              return (
+                <button
+                  key={name}
+                  onClick={() => toggleCollection(name)}
+                  className={cn(
+                    'rounded-full border px-2 py-0.5 text-[11px] transition',
+                    selected
+                      ? 'border-aurora-indigo/40 bg-aurora-indigo/15 text-aurora-indigo'
+                      : 'border-white/[0.08] bg-white/[0.03] text-zinc-500 hover:text-zinc-300'
+                  )}
+                >
+                  {name}
+                </button>
+              )
+            })
+          ) : (
+            <span className="text-[11px] text-zinc-600">还没有合集，可在知识库页创建</span>
+          )}
         </div>
       </div>
 

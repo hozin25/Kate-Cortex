@@ -113,6 +113,9 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             history=history,
             rag_snippets=snippets,
             profile_snippets=profile,
+            collection_names=[
+                name for name, _ in request.app.state.storage.list_collections()
+            ],
         )
 
     return StreamingResponse(generate(), media_type="text/event-stream")

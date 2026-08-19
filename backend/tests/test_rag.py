@@ -7,8 +7,6 @@ class TestRetrieve:
         for i in range(5):
             storage.create_entry(
                 title=f"连接池调优方案 {i}",
-                type="howto",
-                tags=["python"],
                 source="manual",
                 content=f"连接池参数 max_overflow={i}。" + "细节" * 400,
             )
@@ -21,9 +19,7 @@ class TestRetrieve:
         assert snippets[0].title.startswith("连接池调优方案")
 
     def test_no_match_returns_empty(self, storage):
-        storage.create_entry(
-            title="Redis 笔记", type="note", tags=[], source="manual", content="内容"
-        )
+        storage.create_entry(title="Redis 笔记", source="manual", content="内容")
         assert retrieve(storage, "量子纠缠实验") == []
 
 
@@ -37,8 +33,6 @@ class TestBuildSystemPrompt:
     def test_injects_knowledge_section(self, storage):
         storage.create_entry(
             title="连接池调优方案",
-            type="howto",
-            tags=["python"],
             source="manual",
             content="max_size 设为 20。",
         )
@@ -54,20 +48,26 @@ class TestBuildSystemPrompt:
         prompt = build_system_prompt(None)
         assert "## 用户知识库参考" not in prompt
 
+    def test_injects_collections_section(self):
+        prompt = build_system_prompt(None, None, ["金融", "情感"])
+        assert "## 知识库合集" in prompt
+        assert "金融" in prompt and "情感" in prompt
+
+    def test_no_collections_omits_section(self):
+        prompt = build_system_prompt(None, None, [])
+        assert "## 知识库合集" not in prompt
+
 
 class TestUserProfile:
-    def test_returns_only_entries_tagged_profile(self, storage):
+    def test_returns_only_entries_in_profile_collection(self, storage):
         storage.create_entry(
             title="用户教育背景",
-            type="note",
-            tags=["个人信息", "教育背景"],
             source="manual",
             content="软件工程学生。",
+            collections=["个人信息"],
         )
         storage.create_entry(
             title="连接池调优",
-            type="howto",
-            tags=["python"],
             source="manual",
             content="max_size 设为 20。",
         )
@@ -79,10 +79,9 @@ class TestUserProfile:
     def test_prompt_contains_profile_even_without_rag(self, storage):
         storage.create_entry(
             title="用户教育背景",
-            type="note",
-            tags=["个人信息"],
             source="manual",
             content="软件工程学生。",
+            collections=["个人信息"],
         )
         profile = user_profile(storage)
 

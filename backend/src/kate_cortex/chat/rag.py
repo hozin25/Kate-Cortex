@@ -5,7 +5,7 @@ from dataclasses import dataclass
 TOP_K = 3
 SNIPPET_MAX_CHARS = 500
 
-PROFILE_TAG = "个人信息"
+PROFILE_COLLECTION = "个人信息"
 PROFILE_LIMIT = 3
 
 
@@ -35,9 +35,11 @@ def retrieve(storage, query: str, limit: int = TOP_K) -> list[KnowledgeSnippet]:
 
 
 def user_profile(storage) -> list[KnowledgeSnippet]:
-    """tag=个人信息 的条目，按更新时间取前 N 条——FTS 无法跨同义改写召回
+    """「个人信息」合集的条目，按创建时间取前 N 条——FTS 无法跨同义改写召回
     （问「身份」但条目里只有「学生」），用户画像靠常驻注入兜底（DESIGN §7）"""
-    summaries, _ = storage.list_entries(tag=PROFILE_TAG, limit=PROFILE_LIMIT)
+    summaries, _ = storage.list_entries(
+        collection=PROFILE_COLLECTION, limit=PROFILE_LIMIT
+    )
     snippets = []
     for summary in summaries:
         entry = storage.get_entry(summary.id)

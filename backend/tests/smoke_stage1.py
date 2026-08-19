@@ -24,8 +24,7 @@ created = client.post(
     "/api/entries",
     json={
         "title": "如何设计本地优先的知识库",
-        "type": "howto",
-        "tags": ["知识库", "架构"],
+        "collections": ["知识管理"],
         "source": "manual",
         "content": "markdown 与 SQLite 双写，文件是事实来源。",
     },
@@ -33,11 +32,8 @@ created = client.post(
 entry = created.json()
 check("创建中文标题", created.status_code == 201 and entry["id"].startswith("kc_"), entry.get("slug", ""))
 
-listed = client.get("/api/entries", params={"type": "howto"}).json()
-check("列表过滤 type", listed["total"] == 1 and listed["items"][0]["id"] == entry["id"])
-
-tagged = client.get("/api/entries", params={"tag": "知识库"}).json()
-check("列表过滤 tag", tagged["total"] == 1)
+listed = client.get("/api/entries", params={"collection": "知识管理"}).json()
+check("列表过滤 collection", listed["total"] == 1 and listed["items"][0]["id"] == entry["id"])
 
 detail = client.get(f"/api/entries/{entry['id']}").json()
 by_slug = client.get(f"/api/entries/{entry['slug']}").json()
@@ -47,10 +43,10 @@ check(
 )
 
 updated = client.put(
-    f"/api/entries/{entry['id']}", json={"title": "本地优先知识库设计要点", "tags": ["知识库"]}
+    f"/api/entries/{entry['id']}", json={"title": "本地优先知识库设计要点"}
 )
 check(
-    "更新标题/标签",
+    "更新标题",
     updated.status_code == 200 and updated.json()["slug"] == entry["slug"],
 )
 
@@ -75,7 +71,7 @@ check(
     len(md_files) == 1
     and md_text.startswith("---\n")
     and "title: 本地优先知识库设计要点" in md_text
-    and "type: howto" in md_text
+    and "知识管理" in md_text
     and "事实来源" in md_text,
 )
 
