@@ -5,6 +5,8 @@ import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
 import { SavedCard, SuggestCard } from '@renderer/components/chat/Cards'
 import { CitationChips } from '@renderer/components/chat/CitationChips'
+import { MemoryCard } from '@renderer/components/chat/MemoryCard'
+import { MemoryRefChips } from '@renderer/components/chat/MemoryRefChips'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { GradientText } from '@renderer/components/common/Glass'
 import { useChatStore } from '@renderer/stores/chat'
@@ -12,15 +14,25 @@ import { useSettingsStore } from '@renderer/stores/settings'
 
 export function ChatPage(): React.JSX.Element {
   const store = useChatStore()
-  const { messages, streaming, streamText, savedCards, suggestCards, citations, currentId, error } =
-    store
+  const {
+    messages,
+    streaming,
+    streamText,
+    savedCards,
+    suggestCards,
+    citations,
+    memoryCards,
+    memoryRefs,
+    currentId,
+    error
+  } = store
   const ragEnabled = store.ragEnabled
   const settings = useSettingsStore((s) => s.settings)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages.length, streamText, savedCards.length, suggestCards.length])
+  }, [messages.length, streamText, savedCards.length, suggestCards.length, memoryCards.length])
 
   useEffect(() => {
     if (!currentId && store.sessions.length > 0) void store.selectSession(store.sessions[0].id)
@@ -77,6 +89,24 @@ export function ChatPage(): React.JSX.Element {
               <CitationChips citations={citations} />
             </motion.div>
           )}
+
+          {!streaming && memoryRefs.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex justify-start"
+            >
+              <MemoryRefChips memories={memoryRefs} />
+            </motion.div>
+          )}
+
+          {memoryCards.map((memory, i) => (
+            <MemoryCard
+              key={`${memory.entry_id}-${i}`}
+              memory={memory}
+              onUndo={() => store.undoMemory(memory.entry_id)}
+            />
+          ))}
 
           {savedCards.map((saved, i) => (
             <SavedCard key={`${saved.entry_id}-${i}`} saved={saved} />

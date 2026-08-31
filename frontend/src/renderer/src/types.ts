@@ -72,10 +72,32 @@ export interface SuggestPayload {
   preview: string
 }
 
+export interface MemorySavedPayload {
+  entry_id: string
+  slug: string
+  title: string
+  keywords: string[]
+  replaced: boolean
+}
+
+export interface MemoryRefItem {
+  entry_id: string
+  title: string
+  content: string
+  keywords: string[]
+  created_at: string
+}
+
+export interface MemoryRefPayload {
+  query: string
+  memories: MemoryRefItem[]
+}
+
 export interface AppSettings {
   provider_keys: Record<string, string>
   default_provider: ProviderName
   default_model: string
   rag_default: boolean
+  memory_enabled: boolean
   vault_path: string | null
 }

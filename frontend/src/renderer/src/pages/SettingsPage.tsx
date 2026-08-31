@@ -182,6 +182,21 @@ export function SettingsPage(): React.JSX.Element {
           />
         </GlassPanel>
 
+        <GlassPanel className="flex items-center justify-between p-5">
+          <div>
+            <div className="text-sm font-medium text-zinc-200">自动记忆</div>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              开启后，Kate
+              会在对话中自动记住关于你的重要事实（健康、计划、偏好），存入「记忆」合集，
+              并在之后的对话中自然地想起。每条记忆保存时会有提示、可撤销，也可在知识库中管理。
+            </p>
+          </div>
+          <ToggleSwitch
+            checked={settings.memory_enabled}
+            onChange={(v) => void handleSave({ memory_enabled: v })}
+          />
+        </GlassPanel>
+
         <GlassPanel className="p-5">
           <div className="text-sm font-medium text-zinc-200">Vault 路径</div>
           <p className="mt-1 break-all font-mono text-xs leading-5 text-zinc-500">

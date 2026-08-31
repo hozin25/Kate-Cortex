@@ -27,6 +27,9 @@ class EntryMeta:
     collections: list[str] = field(default_factory=list)
     language: str | None = None
     conversation: str | None = None
+    # 自动记忆（v4）：场景触发词与重要性，仅「记忆」合集条目使用，其余条目为空
+    keywords: list[str] = field(default_factory=list)
+    importance: int | None = None
 
 
 def _str_list(value) -> list[str]:
@@ -55,6 +58,8 @@ def parse_markdown(text: str) -> tuple[EntryMeta, str]:
         collections=_str_list(fm.get("collections")),
         language=_optional_str(fm.get("language")),
         conversation=_optional_str(fm.get("conversation")),
+        keywords=_str_list(fm.get("keywords")),
+        importance=_optional_int(fm.get("importance")),
     )
     validate(meta)
     return meta, post.content
@@ -67,6 +72,8 @@ def validate(meta: EntryMeta) -> None:
         raise FrontmatterError("title 不能为空")
     if not meta.id.strip() or not meta.slug.strip():
         raise FrontmatterError("id 与 slug 不能为空")
+    if meta.importance is not None and not 1 <= meta.importance <= 5:
+        raise FrontmatterError(f"importance 必须在 1-5 之间: {meta.importance}")
 
 
 def dump_markdown(meta: EntryMeta, content: str) -> str:
@@ -80,6 +87,8 @@ def dump_markdown(meta: EntryMeta, content: str) -> str:
         "language": meta.language,
         "source": meta.source,
         "conversation": meta.conversation,
+        "keywords": meta.keywords,
+        "importance": meta.importance,
         "created_at": meta.created_at,
         "updated_at": meta.updated_at,
     }
@@ -94,3 +103,9 @@ def _optional_str(value) -> str | None:
         return None
     value = str(value)
     return value or None
+
+
+def _optional_int(value) -> int | None:
+    if value is None:
+        return None
+    return int(value)

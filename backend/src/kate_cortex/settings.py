@@ -8,6 +8,7 @@ DEFAULTS = {
     "default_provider": "deepseek",
     "default_model": "deepseek-chat",
     "rag_default": True,
+    "memory_enabled": True,
     "vault_path": None,
 }
 

@@ -27,6 +27,16 @@ SUGGEST_ARGS = {
     "collections": ["选型复盘"],
     "content_markdown": "单机个人应用，零运维，够用。",
 }
+MEMORY_ARGS = {
+    "title": "感冒了",
+    "content": "8月30日感冒，在吃感冒灵，注意保暖",
+    "keywords": ["感冒", "健康", "保暖", "出行"],
+    "importance": 4,
+}
+RECALL_ARGS = {
+    "query": "周末想去户外玩",
+    "keywords": ["出行", "健康"],
+}
 
 
 @pytest.fixture
@@ -213,7 +223,163 @@ class TestAgentLoopEdges:
         chat(client, session_id)
 
         tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
+        assert tool_names == [
+            "save_knowledge",
+            "suggest_save",
+            "save_memory",
+            "recall_memory",
+        ]
+
+    def test_memory_disabled_hides_memory_tools(self, client):
+        client.put("/api/settings", json={"memory_enabled": False})
+        session_id = start_session(client)
+        fake = FakeProvider(rounds=[[TextDelta("ok"), Done("stop")]])
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        chat(client, session_id)
+
+        tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
         assert tool_names == ["save_knowledge", "suggest_save"]
+
+
+class TestMemoryFlow:
+    def seed_memory(self, client) -> str:
+        resp = client.post(
+            "/api/entries",
+            json={
+                "title": "感冒了",
+                "collections": ["记忆"],
+                "content": "8月30日感冒，在吃感冒灵，注意保暖",
+                "source": "chat",
+                "keywords": ["感冒", "健康", "保暖", "出行"],
+                "importance": 4,
+            },
+        )
+        return resp.json()["id"]
+
+    def test_save_memory_streams_event_and_persists(self, client):
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas("call_1", "save_memory", MEMORY_ARGS) + [Done("tool_calls")],
+                [TextDelta("多喝水多休息，祝早日康复。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id, content="我感冒了").text)
+        names = [name for name, _ in events]
+
+        assert names == ["citations", "memory_saved", "delta", "done"]
+        saved = next(data for name, data in events if name == "memory_saved")
+        assert saved["title"] == "感冒了"
+        assert saved["replaced"] is False
+        assert saved["keywords"] == ["感冒", "健康", "保暖", "出行"]
+
+        entry = client.get(f"/api/entries/{saved['entry_id']}").json()
+        assert entry["collections"] == ["记忆"]
+        assert entry["keywords"] == ["感冒", "健康", "保暖", "出行"]
+        assert entry["importance"] == 4
+        assert entry["conversation_id"] == session_id
+
+    def test_resident_memory_injected_into_system_prompt(self, client):
+        entry_id = self.seed_memory(client)
+        session_id = start_session(client)
+        fake = FakeProvider(rounds=[[TextDelta("记得保暖。"), Done("stop")]])
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id, content="周末出去玩").text)
+
+        system_prompt = fake.calls[0]["messages"][0]["content"]
+        assert "## 近期记忆" in system_prompt
+        assert entry_id in system_prompt
+        assert "注意保暖" in system_prompt
+        tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
+        assert "save_memory" in tool_names and "recall_memory" in tool_names
+        assert next(name for name, _ in events) == "citations"
+
+    def test_resident_injection_off_when_disabled(self, client):
+        self.seed_memory(client)
+        client.put("/api/settings", json={"memory_enabled": False})
+        session_id = start_session(client)
+        fake = FakeProvider(rounds=[[TextDelta("好。"), Done("stop")]])
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        chat(client, session_id, content="周末出去玩")
+
+        system_prompt = fake.calls[0]["messages"][0]["content"]
+        assert "## 近期记忆" not in system_prompt
+        assert "注意保暖" not in system_prompt
+
+    def test_recall_memory_streams_refs_and_feeds_tool_result(self, client):
+        entry_id = self.seed_memory(client)
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas("call_1", "recall_memory", RECALL_ARGS) + [Done("tool_calls")],
+                [TextDelta("你最近感冒，出门记得保暖。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id, content="周末想出去玩").text)
+        names = [name for name, _ in events]
+
+        assert names == ["citations", "memory_refs", "delta", "done"]
+        refs = next(data for name, data in events if name == "memory_refs")
+        assert refs["memories"][0]["entry_id"] == entry_id
+        assert refs["memories"][0]["title"] == "感冒了"
+
+        tool_msg = fake.calls[1]["messages"][-1]
+        assert tool_msg["role"] == "tool"
+        assert entry_id in tool_msg["content"]
+
+    def test_recall_without_hit_emits_no_event(self, client):
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas("call_1", "recall_memory", {"keywords": ["做饭"]})
+                + [Done("tool_calls")],
+                [TextDelta("没想起什么相关的事。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id, content="怎么做红烧肉").text)
+        names = [name for name, _ in events]
+
+        assert names == ["citations", "delta", "done"]
+        tool_msg = fake.calls[1]["messages"][-1]
+        assert "没有找到相关记忆" in tool_msg["content"]
+
+    def test_save_memory_with_replaces_updates_existing(self, client):
+        entry_id = self.seed_memory(client)
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas(
+                    "call_1",
+                    "save_memory",
+                    {
+                        "title": "感冒已痊愈",
+                        "content": "9月2日感冒好了",
+                        "keywords": ["感冒", "健康"],
+                        "replaces_entry_id": entry_id,
+                    },
+                )
+                + [Done("tool_calls")],
+                [TextDelta("好的，已更新。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id, content="我感冒好了").text)
+
+        saved = next(data for name, data in events if name == "memory_saved")
+        assert saved["replaced"] is True
+        assert saved["entry_id"] == entry_id
+        assert client.get("/api/entries").json()["total"] == 1
+        assert client.get(f"/api/entries/{entry_id}").json()["title"] == "感冒已痊愈"
 
 
 class TestRagIntegration:

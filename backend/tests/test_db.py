@@ -69,6 +69,76 @@ class TestSchema:
         assert remaining == 0
 
 
+V3_SCHEMA = """
+CREATE TABLE schema_version (version INTEGER NOT NULL);
+CREATE TABLE entries (
+  id              TEXT PRIMARY KEY,
+  slug            TEXT UNIQUE NOT NULL,
+  title           TEXT NOT NULL,
+  project         TEXT,
+  language        TEXT,
+  source          TEXT NOT NULL CHECK (source IN ('manual','chat','import')),
+  conversation_id TEXT,
+  file_path       TEXT NOT NULL,
+  created_at      TEXT NOT NULL,
+  updated_at      TEXT NOT NULL
+);
+CREATE TABLE collections (
+  id   INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, created_at TEXT NOT NULL
+);
+CREATE TABLE entry_collections (
+  entry_id TEXT NOT NULL, collection_id INTEGER NOT NULL,
+  PRIMARY KEY (entry_id, collection_id),
+  FOREIGN KEY (entry_id)      REFERENCES entries(id)     ON DELETE CASCADE,
+  FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+);
+CREATE TABLE entry_links (
+  from_id TEXT NOT NULL, to_slug TEXT NOT NULL, PRIMARY KEY (from_id, to_slug),
+  FOREIGN KEY (from_id) REFERENCES entries(id) ON DELETE CASCADE
+);
+CREATE VIRTUAL TABLE entries_fts USING fts5(title_tokens, content_tokens, entry_id UNINDEXED);
+CREATE TABLE conversations (
+  id TEXT PRIMARY KEY, title TEXT, provider TEXT NOT NULL, model TEXT NOT NULL,
+  created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE messages (
+  id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','tool')),
+  content TEXT NOT NULL, tool_calls TEXT, knowledge_refs TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+);
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+INSERT INTO schema_version (version) VALUES (3);
+INSERT INTO entries (id, slug, title, source, file_path, created_at, updated_at)
+  VALUES ('kc_20260818_001', 'old-entry', '旧条目', 'manual', 'a.md', 't', 't');
+"""
+
+
+class TestMigrateV3ToV4:
+    def test_adds_memory_columns_and_keeps_rows(self, tmp_path):
+        db_path = tmp_path / "index.sqlite"
+        conn = sqlite3.connect(db_path)
+        conn.executescript(V3_SCHEMA)
+        conn.commit()
+        conn.close()
+
+        database = db_mod.connect(db_path)
+
+        columns = {row[1] for row in database.conn.execute("PRAGMA table_info(entries)")}
+        assert {"keywords", "importance"} <= columns
+
+        row = database.conn.execute(
+            "SELECT id, keywords, importance FROM entries"
+        ).fetchone()
+        assert tuple(row) == ("kc_20260818_001", None, None)
+
+        version = database.conn.execute("SELECT version FROM schema_version").fetchone()
+        assert version[0] == db_mod.SCHEMA_VERSION
+        assert database.migrated_from == 3
+        assert database.conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
 V1_SCHEMA = """
 CREATE TABLE schema_version (version INTEGER NOT NULL);
 CREATE TABLE entries (

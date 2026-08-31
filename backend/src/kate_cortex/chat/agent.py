@@ -4,7 +4,10 @@ import json
 from typing import Iterator
 
 from ..providers.base import TextDelta, ToolCallAccumulator, ToolCallDelta
-from ..skills.knowledge import TOOLS, save_knowledge, suggest_save
+from ..skills.knowledge import TOOLS as KNOWLEDGE_TOOLS
+from ..skills.knowledge import save_knowledge, suggest_save
+from ..skills.memory import TOOLS as MEMORY_TOOLS
+from ..skills.memory import recall_memory, save_memory
 from .prompts import build_system_prompt
 
 MAX_TOOL_ROUNDS = 3
@@ -24,13 +27,17 @@ def run_agent_chat(
     rag_snippets: list,
     profile_snippets: list | None = None,
     collection_names: list[str] | None = None,
+    memory_snippets: list | None = None,
+    memory_enabled: bool = False,
 ) -> Iterator[str]:
     system_prompt = build_system_prompt(
         rag_snippets=rag_snippets,
         profile_snippets=profile_snippets,
         collections=collection_names,
+        memory_snippets=memory_snippets,
     )
     messages = [{"role": "system", "content": system_prompt}, *history]
+    tools = [*KNOWLEDGE_TOOLS, *(MEMORY_TOOLS if memory_enabled else [])]
     knowledge_refs = [s.entry_id for s in rag_snippets]
     executed_tools: list[dict] = []
     all_text: list[str] = []
@@ -39,7 +46,7 @@ def run_agent_chat(
         parts: list[str] = []
         accumulator = ToolCallAccumulator()
         try:
-            for event in provider.chat_stream(messages, tools=TOOLS):
+            for event in provider.chat_stream(messages, tools=tools):
                 if isinstance(event, TextDelta):
                     parts.append(event.text)
                     yield sse("delta", {"text": event.text})
@@ -60,8 +67,9 @@ def run_agent_chat(
         for call in tool_calls:
             result = _execute_tool(call, storage, session_id, executed_tools)
             if isinstance(result, dict):
-                event = "tool_result" if "entry_id" in result else "suggest"
-                yield sse(event, result)
+                event = _sse_event(call["function"]["name"], result)
+                if event:
+                    yield sse(event, result)
                 result = _tool_summary(call, result)
             messages.append(
                 {"role": "tool", "tool_call_id": call["id"], "content": result}
@@ -92,12 +100,39 @@ def _execute_tool(
             return save_knowledge(storage, args, conversation_id=session_id)
         if name == "suggest_save":
             return suggest_save(args)
+        if name == "save_memory":
+            return save_memory(storage, args, conversation_id=session_id)
+        if name == "recall_memory":
+            return recall_memory(storage, args)
         return f"未知工具: {name}"
     except Exception as exc:
         return f"工具执行失败: {exc}"
 
 
+def _sse_event(name: str, result: dict) -> str | None:
+    """工具结果对应的 SSE 事件；返回 None 表示无需推给前端
+    （如 recall 无命中，避免空噪音）"""
+    if name == "save_memory":
+        return "memory_saved"
+    if name == "recall_memory":
+        return "memory_refs" if result.get("memories") else None
+    if "entry_id" in result:
+        return "tool_result"
+    return "suggest"
+
+
 def _tool_summary(call: dict, result: dict) -> str:
+    name = call["function"]["name"]
+    if name == "save_memory":
+        action = "已更新记忆" if result.get("replaced") else "已记住"
+        return f"{action}《{result['title']}》(id={result['entry_id']})"
+    if name == "recall_memory":
+        memories = result.get("memories") or []
+        if not memories:
+            return "没有找到相关记忆"
+        return "找到相关记忆: " + "；".join(
+            f"《{m['title']}》(id={m['entry_id']}) {m['content']}" for m in memories
+        )
     if "entry_id" in result:
         return f"已保存知识条目《{result['title']}》(id={result['entry_id']})"
     return "已展示保存建议卡片，等待用户确认，未写入知识库"

@@ -299,6 +299,8 @@ GET    /api/health                      {app: "kate-cortex", version}
 | `delta` | `{text}` | 流式文本片段 |
 | `tool_result` | `{entry_id, title, collections}` | save_knowledge 已入库 → 前端渲染保存卡片 |
 | `suggest` | `{title, collections, preview}` | AI 建议卡片（**未入库**，等用户确认；合集建议可改可拒） |
+| `memory_saved` | `{entry_id, slug, title, keywords, replaced}` | save_memory 已自动记住/更新 → 前端渲染记忆卡片（可撤销） |
+| `memory_refs` | `{query, memories: [{entry_id, title, content, keywords, created_at}]}` | recall_memory 命中相关记忆 → 前端渲染「想起」chips；无命中不推 |
 | `done` | `{message_id}` | 消息落库完成 |
 | `error` | `{message}` | 出错 |
 
@@ -393,6 +395,44 @@ providers/
   「学生/教育背景」），而用户画像类问题（我是谁/做什么的）是高频刚需，靠常驻
   注入兜底；档案条目不计入 `citations` / `knowledge_refs`
 - v0.2：sqlite-vec 向量召回 + 关键词混合（解决其余同义改写场景）
+
+### 7.1 自动记忆机制（2026-08-31 增补，schema v4）
+
+对话即记忆：Kate 在对话中**自动**记住关于用户本人的耐久事实（健康状况、行程
+计划、稳定偏好、重要生活事件、进行中的事），并在后续对话中自然想起——
+「昨天问感冒药，今天问出去玩」时主动提醒保暖。对标 ChatGPT Memory 的
+「自动保存 + 轻提示 + 事后管理」交互，借鉴 Mem0 的 append-only 原则。
+
+**存储**：记忆 = 知识库 `记忆` **合集**中的普通条目（source=chat，
+携带 conversation_id），复用 md/SQLite 双写、回收站、Library 管理全链路。
+schema v4 为 entries 增加 `keywords`（JSON 数组，场景触发词）与
+`importance`（1-5）两个可空列，frontmatter 同步读写，非记忆条目不受影响。
+
+**工具**（`skills/memory.py`，agent loop 内自动调用）：
+
+- `save_memory`：LLM 判断出现耐久个人事实即调用（无需用户要求）；一条记忆
+  只记一个原子事实，**必须**附 3-8 个场景关键词（记感冒时写：感冒/健康/
+  保暖/出行/天气）；旧记忆过时（感冒好了）传 `replaces_entry_id` 显式
+  覆盖更新，而非模型擅自改写或重复新建
+- `recall_memory`：回答与个人生活相关的问题前调用，keywords 由模型从当前
+  话题提炼并联想相关场景（问「出去玩」可查：出行/健康/天气）
+
+**召回**（双层，`chat/memory.py`）：
+
+1. **常驻注入**：每次对话把 (importance, created_at) 排序的前 5 条记忆以
+   一行一条（含 entry_id，供 replaces 引用）注入 system prompt「近期记忆」
+   段——近期事项确定性命中，不依赖模型自觉
+2. **打分检索**：`recall(storage, keywords)` 纯函数打分——关键词重合(×3) +
+   importance(×0.5) + 新近度(<7天 +2 / <30天 +1)，零重合不返回；关键词匹配
+   含包含关系（「感冒」对「感冒药」）并延伸到标题/正文
+
+跨话题关联的关键：FTS 字面检索无法把「出去玩」和「感冒」联系起来，本机制
+靠**保存与检索两端都由 LLM 生成同一话题空间的场景关键词**来桥接语义鸿沟，
+在 sqlite-vec（v0.2）落地前以零新依赖覆盖该场景。
+
+**开关与交互**：settings `memory_enabled`（默认开）控制工具挂载与常驻注入；
+自动保存推送 `memory_saved` SSE → 前端轻量记忆卡片（标题 + 关键词 chips +
+撤销=软删条目）；recall 命中推送 `memory_refs` → 「想起」chips。
 
 ---
 

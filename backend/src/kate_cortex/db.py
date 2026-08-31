@@ -3,7 +3,7 @@
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -20,7 +20,9 @@ CREATE TABLE IF NOT EXISTS entries (
   conversation_id TEXT,
   file_path       TEXT NOT NULL,
   created_at      TEXT NOT NULL,
-  updated_at      TEXT NOT NULL
+  updated_at      TEXT NOT NULL,
+  keywords        TEXT,
+  importance      INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_entries_created ON entries(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_entries_conv   ON entries(conversation_id);
@@ -116,6 +118,8 @@ class Database:
             self._rebuild_entries_without_type()
         if current < 3:
             self._drop_tag_tables_and_rebuild_fts()
+        if current < 4:
+            self._add_memory_columns()
         self._conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
 
     def _rebuild_entries_without_type(self) -> None:
@@ -193,6 +197,16 @@ class Database:
             raise
         finally:
             conn.execute("PRAGMA foreign_keys=ON")
+
+    def _add_memory_columns(self) -> None:
+        """v3 → v4：自动记忆功能。entries 加 keywords（JSON 数组，场景触发词）
+        与 importance（1-5）两列，均可空——非记忆条目不受影响；纯加列无需
+        整表重建，md 真相源里的对应 frontmatter 字段由 reindex/_write_db 带入"""
+        conn = self._conn
+        conn.commit()
+        with conn:
+            conn.execute("ALTER TABLE entries ADD COLUMN keywords TEXT")
+            conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER")
 
     def close(self) -> None:
         self._conn.close()

@@ -16,6 +16,8 @@ class EntryCreate(BaseModel):
     language: str | None = None
     conversation_id: str | None = None
     slug: str | None = None
+    keywords: list[str] = Field(default_factory=list)
+    importance: int | None = Field(default=None, ge=1, le=5)
 
 
 class EntryUpdate(BaseModel):
@@ -23,6 +25,8 @@ class EntryUpdate(BaseModel):
     content: str | None = None
     collections: list[str] | None = None
     language: str | None = None
+    keywords: list[str] | None = None
+    importance: int | None = Field(default=None, ge=1, le=5)
 
 
 class EntryOut(BaseModel):
@@ -37,6 +41,8 @@ class EntryOut(BaseModel):
     file_path: str
     created_at: str
     updated_at: str
+    keywords: list[str] = Field(default_factory=list)
+    importance: int | None = None
 
 
 class EntrySummaryOut(BaseModel):
@@ -49,6 +55,8 @@ class EntrySummaryOut(BaseModel):
     conversation_id: str | None
     created_at: str
     updated_at: str
+    keywords: list[str] = Field(default_factory=list)
+    importance: int | None = None
 
 
 class EntryListOut(BaseModel):
@@ -120,6 +128,7 @@ class SettingsUpdate(BaseModel):
     default_provider: ProviderName | None = None
     default_model: str | None = None
     rag_default: bool | None = None
+    memory_enabled: bool | None = None
     vault_path: str | None = None
 
 
@@ -128,6 +137,7 @@ class SettingsOut(BaseModel):
     default_provider: str
     default_model: str
     rag_default: bool
+    memory_enabled: bool
     vault_path: str | None
 
 

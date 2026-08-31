@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from ..chat.agent import run_agent_chat, sse as sse_event
+from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
@@ -78,6 +79,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     rag_enabled = (
         payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
     )
+    memory_enabled = settings.get("memory_enabled", True)
 
     chat_service.append_message(session_id, "user", payload.content)
     chat_service.ensure_title(session_id, payload.content)
@@ -96,6 +98,9 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             retrieve(request.app.state.storage, payload.content) if rag_enabled else []
         )
         profile = user_profile(request.app.state.storage)
+        memories = (
+            resident_memories(request.app.state.storage) if memory_enabled else []
+        )
         yield sse_event(
             "citations",
             {
@@ -116,6 +121,8 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             collection_names=[
                 name for name, _ in request.app.state.storage.list_collections()
             ],
+            memory_snippets=memories,
+            memory_enabled=memory_enabled,
         )
 
     return StreamingResponse(generate(), media_type="text/event-stream")

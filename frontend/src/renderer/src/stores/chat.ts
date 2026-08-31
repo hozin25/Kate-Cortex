@@ -1,10 +1,13 @@
 import { create } from 'zustand'
 import { api } from '@renderer/api/client'
 import { postSse } from '@renderer/api/sse'
+import { toast } from '@renderer/stores/toast'
 import type {
   ChatMessage,
   ChatSession,
   Citation,
+  MemoryRefItem,
+  MemorySavedPayload,
   ProviderName,
   SavedPayload,
   SuggestPayload
@@ -19,6 +22,8 @@ interface ChatState {
   citations: Citation[]
   savedCards: SavedPayload[]
   suggestCards: SuggestPayload[]
+  memoryCards: MemorySavedPayload[]
+  memoryRefs: MemoryRefItem[]
   error: string | null
   abort: AbortController | null
   ragEnabled: boolean | null
@@ -31,6 +36,7 @@ interface ChatState {
   sendMessage: (content: string) => Promise<void>
   stopStreaming: () => void
   dismissSuggest: (index: number) => void
+  undoMemory: (entryId: string) => Promise<void>
   clearError: () => void
 }
 
@@ -43,6 +49,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   citations: [],
   savedCards: [],
   suggestCards: [],
+  memoryCards: [],
+  memoryRefs: [],
   error: null,
   abort: null,
   ragEnabled: null,
@@ -60,6 +68,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       citations: [],
       savedCards: [],
       suggestCards: [],
+      memoryCards: [],
+      memoryRefs: [],
       streamText: '',
       streaming: false,
       error: null
@@ -79,6 +89,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       citations: [],
       savedCards: [],
       suggestCards: [],
+      memoryCards: [],
+      memoryRefs: [],
       streamText: '',
       error: null
     })
@@ -96,7 +108,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       sessions,
       ...(wasCurrent
-        ? { currentId: null, messages: [], savedCards: [], suggestCards: [], citations: [] }
+        ? {
+            currentId: null,
+            messages: [],
+            savedCards: [],
+            suggestCards: [],
+            memoryCards: [],
+            memoryRefs: [],
+            citations: []
+          }
         : {})
     })
   },
@@ -118,6 +138,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       streaming: true,
       streamText: '',
       citations: [],
+      memoryRefs: [],
       error: null
     })
 
@@ -138,6 +159,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set({ savedCards: [...s.savedCards, data as unknown as SavedPayload] })
           } else if (event === 'suggest') {
             set({ suggestCards: [...s.suggestCards, data as unknown as SuggestPayload] })
+          } else if (event === 'memory_saved') {
+            set({ memoryCards: [...s.memoryCards, data as unknown as MemorySavedPayload] })
+          } else if (event === 'memory_refs') {
+            set({ memoryRefs: (data.memories as MemoryRefItem[]) ?? [] })
           } else if (event === 'done') {
             set({ streamText: '' })
           } else if (event === 'error') {
@@ -172,6 +197,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   dismissSuggest: (index) => {
     set({ suggestCards: get().suggestCards.filter((_, i) => i !== index) })
+  },
+
+  undoMemory: async (entryId) => {
+    try {
+      await api.delete(`/entries/${entryId}`)
+      set({ memoryCards: get().memoryCards.filter((c) => c.entry_id !== entryId) })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '撤销失败')
+    }
   },
 
   clearError: () => set({ error: null })

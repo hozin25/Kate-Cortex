@@ -1,5 +1,6 @@
 """markdown ↔ SQLite 双写存储（DESIGN.md §3.4）：md 是事实来源，SQLite 是索引"""
 
+import json
 import logging
 import shutil
 import sqlite3
@@ -54,6 +55,8 @@ class Entry:
     source: str
     language: str | None
     conversation_id: str | None
+    keywords: list[str]  # 自动记忆（v4）：场景触发词，非记忆条目为空
+    importance: int | None  # 自动记忆（v4）：1-5，非记忆条目为 None
     content: str
     file_path: str
     created_at: str
@@ -69,6 +72,8 @@ class EntrySummary:
     source: str
     language: str | None
     conversation_id: str | None
+    keywords: list[str]
+    importance: int | None
     created_at: str
     updated_at: str
 
@@ -100,6 +105,8 @@ class Storage:
         language: str | None = None,
         conversation_id: str | None = None,
         slug: str | None = None,
+        keywords: list[str] | None = None,
+        importance: int | None = None,
     ) -> Entry:
         if source not in SOURCES:
             raise StorageError(f"source 非法: {source!r}")
@@ -118,6 +125,8 @@ class Storage:
             collections=_dedup(collections or []),
             language=language,
             conversation=conversation_id,
+            keywords=_dedup(keywords or []),
+            importance=importance,
         )
 
         file_path = self._rel_path(entry_id, final_slug)
@@ -195,6 +204,8 @@ class Storage:
         content: str | None = None,
         collections: list[str] | None = None,
         language: str | None = None,
+        keywords: list[str] | None = None,
+        importance: int | None = None,
     ) -> Entry:
         row = self._find_row(entry_id)
         if row is None:
@@ -207,6 +218,8 @@ class Storage:
         )
         new_content = content if content is not None else current.content
         new_language = language if language is not None else current.language
+        new_keywords = _dedup(keywords) if keywords is not None else current.keywords
+        new_importance = importance if importance is not None else current.importance
         now = _now()
 
         meta = EntryMeta(
@@ -220,14 +233,24 @@ class Storage:
             collections=new_collections,
             language=new_language,
             conversation=current.conversation_id,
+            keywords=new_keywords,
+            importance=new_importance,
         )
         md_file = self.vault / current.file_path
         md_file.write_text(dump_markdown(meta, new_content), encoding="utf-8")
         try:
             with self.conn:
                 self.conn.execute(
-                    "UPDATE entries SET title=?, language=?, updated_at=? WHERE id=?",
-                    (new_title, new_language, now, current.id),
+                    "UPDATE entries SET title=?, language=?, keywords=?, importance=?,"
+                    " updated_at=? WHERE id=?",
+                    (
+                        new_title,
+                        new_language,
+                        _dump_keywords(new_keywords),
+                        new_importance,
+                        now,
+                        current.id,
+                    ),
                 )
                 self._write_collections(current.id, new_collections)
                 self._write_links(current.id, new_content)
@@ -241,6 +264,7 @@ class Storage:
                         created_at=current.created_at, updated_at=current.updated_at,
                         collections=current.collections,
                         language=current.language, conversation=current.conversation_id,
+                        keywords=current.keywords, importance=current.importance,
                     ),
                     current.content,
                 ),
@@ -354,6 +378,8 @@ class Storage:
                     collections=_dedup([*entry.collections, PROFILE_COLLECTION]),
                     language=entry.language,
                     conversation=entry.conversation_id,
+                    keywords=entry.keywords,
+                    importance=entry.importance,
                 )
                 md_file = self.vault / entry.file_path
                 md_file.write_text(dump_markdown(meta, entry.content), encoding="utf-8")
@@ -478,6 +504,8 @@ class Storage:
             source=meta.source,
             language=meta.language,
             conversation_id=meta.conversation,
+            keywords=meta.keywords,
+            importance=meta.importance,
             content=content,
             file_path=row["file_path"],
             created_at=meta.created_at,
@@ -502,6 +530,8 @@ class Storage:
             source=row["source"],
             language=row["language"],
             conversation_id=row["conversation_id"],
+            keywords=_load_keywords(row["keywords"]),
+            importance=row["importance"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -510,12 +540,14 @@ class Storage:
         with self.conn:
             self.conn.execute(
                 "INSERT INTO entries (id, slug, title, language, source,"
-                " conversation_id, file_path, created_at, updated_at)"
-                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " conversation_id, file_path, created_at, updated_at,"
+                " keywords, importance)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     meta.id, meta.slug, meta.title, meta.language,
                     meta.source, meta.conversation, rel_path,
                     meta.created_at, meta.updated_at,
+                    _dump_keywords(meta.keywords), meta.importance,
                 ),
             )
             self._write_collections(meta.id, meta.collections)
@@ -579,6 +611,19 @@ class Storage:
 
 def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def _dump_keywords(keywords: list[str]) -> str | None:
+    return json.dumps(keywords, ensure_ascii=False) if keywords else None
+
+
+def _load_keywords(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        return [str(k) for k in json.loads(raw)]
+    except (json.JSONDecodeError, TypeError):
+        return []
 
 
 def _dedup(items: list[str]) -> list[str]:
