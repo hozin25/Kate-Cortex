@@ -3,15 +3,18 @@
 from .base import BaseProvider, ProviderError
 from .deepseek import DeepSeekProvider
 from .glm import GLMProvider
+from .glm_coding import GLMCodingProvider
 
 REGISTRY: dict[str, type[BaseProvider]] = {
     "deepseek": DeepSeekProvider,
     "glm": GLMProvider,
+    "glm-coding": GLMCodingProvider,
 }
 
 DEFAULT_MODELS: dict[str, str] = {
     "deepseek": "deepseek-chat",
     "glm": "glm-4-flash",
+    "glm-coding": "glm-5.3",
 }
 
 

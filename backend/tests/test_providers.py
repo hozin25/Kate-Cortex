@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 from typing import Any
 
+from kate_cortex.providers.anthropic_compat import (
+    to_anthropic_messages,
+    to_anthropic_tools,
+)
 from kate_cortex.providers.base import (
     Done,
     TextDelta,
@@ -9,6 +13,7 @@ from kate_cortex.providers.base import (
 )
 from kate_cortex.providers.deepseek import DeepSeekProvider
 from kate_cortex.providers.glm import GLMProvider
+from kate_cortex.providers.glm_coding import GLMCodingProvider
 from kate_cortex.providers.openai_compat import OpenAICompatProvider
 
 
@@ -148,3 +153,239 @@ class TestProviderClasses:
         provider = GLMProvider(api_key="sk", model="glm-4-flash")
         assert provider.name == "glm"
         assert provider.base_url == "https://open.bigmodel.cn/api/paas/v4"
+
+
+def block_start(index, block_type, **fields):
+    return SimpleNamespace(
+        type="content_block_start",
+        index=index,
+        content_block=SimpleNamespace(type=block_type, **fields),
+    )
+
+
+def text_delta(index, text):
+    return SimpleNamespace(
+        type="content_block_delta",
+        index=index,
+        delta=SimpleNamespace(type="text_delta", text=text),
+    )
+
+
+def json_delta(index, fragment):
+    return SimpleNamespace(
+        type="content_block_delta",
+        index=index,
+        delta=SimpleNamespace(type="input_json_delta", partial_json=fragment),
+    )
+
+
+def thinking_delta(index, text):
+    return SimpleNamespace(
+        type="content_block_delta",
+        index=index,
+        delta=SimpleNamespace(type="thinking_delta", thinking=text),
+    )
+
+
+def message_delta(stop_reason):
+    return SimpleNamespace(
+        type="message_delta", delta=SimpleNamespace(stop_reason=stop_reason)
+    )
+
+
+def make_anthropic_provider(events: list[Any], captured: dict | None = None):
+    provider = GLMCodingProvider(api_key="sk-test", model="glm-5.3")
+
+    def fake_create(**kwargs):
+        if captured is not None:
+            captured.update(kwargs)
+        return iter(events)
+
+    provider._client_factory = lambda: SimpleNamespace(
+        messages=SimpleNamespace(create=fake_create), close=lambda: None
+    )
+    return provider
+
+
+class TestAnthropicMessageConversion:
+    def test_system_extracted_and_tool_calls_mapped(self):
+        system, messages = to_anthropic_messages(
+            [
+                {"role": "system", "content": "你是 Kate"},
+                {"role": "user", "content": "记一下"},
+                {
+                    "role": "assistant",
+                    "content": "好的",
+                    "tool_calls": [
+                        {
+                            "id": "toolu_1",
+                            "type": "function",
+                            "function": {
+                                "name": "save_memory",
+                                "arguments": '{"title": "感冒"}',
+                            },
+                        }
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "toolu_1",
+                    "content": "已记住",
+                },
+            ]
+        )
+
+        assert system == "你是 Kate"
+        assert [m["role"] for m in messages] == ["user", "assistant", "user"]
+        assert messages[1]["content"] == [
+            {"type": "text", "text": "好的"},
+            {
+                "type": "tool_use",
+                "id": "toolu_1",
+                "name": "save_memory",
+                "input": {"title": "感冒"},
+            },
+        ]
+        assert messages[2]["content"] == [
+            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "已记住"}
+        ]
+
+    def test_consecutive_user_roles_merged(self):
+        system, messages = to_anthropic_messages(
+            [
+                {"role": "system", "content": "s"},
+                {"role": "user", "content": "a"},
+                {"role": "user", "content": "b"},
+            ]
+        )
+
+        assert [m["role"] for m in messages] == ["user"]
+        assert len(messages[0]["content"]) == 2
+
+    def test_empty_assistant_dropped_and_bad_json_becomes_empty_input(self):
+        system, messages = to_anthropic_messages(
+            [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": ""},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "t1",
+                            "function": {"name": "recall_memory", "arguments": "{bad"},
+                        }
+                    ],
+                },
+            ]
+        )
+
+        assert [m["role"] for m in messages] == ["user", "assistant"]
+        tool_use = messages[1]["content"][0]
+        assert tool_use["input"] == {}
+
+    def test_tool_schema_conversion(self):
+        converted = to_anthropic_tools(
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "save_memory",
+                        "description": "记住",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"title": {"type": "string"}},
+                        },
+                    },
+                }
+            ]
+        )
+
+        assert converted == [
+            {
+                "name": "save_memory",
+                "description": "记住",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"title": {"type": "string"}},
+                },
+            }
+        ]
+
+
+class TestAnthropicStreamNormalization:
+    def test_text_and_thinking_deltas(self):
+        provider = make_anthropic_provider(
+            [
+                thinking_delta(0, "让我想想"),
+                text_delta(1, "你好"),
+                message_delta("end_turn"),
+            ]
+        )
+
+        events = list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+        assert events == [TextDelta("你好"), Done("stop")]
+
+    def test_tool_use_stream_accumulates_via_existing_accumulator(self):
+        provider = make_anthropic_provider(
+            [
+                text_delta(0, "我来记一下。"),
+                block_start(1, "tool_use", id="toolu_9", name="save_memory"),
+                json_delta(1, '{"title": "感'),
+                json_delta(1, '冒"}'),
+                message_delta("tool_use"),
+            ]
+        )
+
+        events = list(
+            provider.chat_stream([{"role": "user", "content": "我感冒了"}])
+        )
+
+        accumulator = ToolCallAccumulator()
+        for event in events:
+            if isinstance(event, ToolCallDelta):
+                accumulator.add(event)
+
+        assert accumulator.build() == [
+            {
+                "id": "toolu_9",
+                "type": "function",
+                "function": {"name": "save_memory", "arguments": '{"title": "感冒"}'},
+            }
+        ]
+        assert events[-1] == Done("tool_calls")
+
+    def test_request_kwargs(self):
+        captured: dict = {}
+        provider = make_anthropic_provider([message_delta("end_turn")], captured)
+
+        list(
+            provider.chat_stream(
+                [
+                    {"role": "system", "content": "sys"},
+                    {"role": "user", "content": "hi"},
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "save_memory",
+                            "description": "d",
+                            "parameters": {"type": "object", "properties": {}},
+                        },
+                    }
+                ],
+            )
+        )
+
+        assert captured["system"] == "sys"
+        assert captured["max_tokens"] == provider.max_tokens
+        assert captured["thinking"] == {"type": "disabled"}
+        assert captured["tool_choice"] == {"type": "auto"}
+        assert captured["tools"][0]["input_schema"] == {"type": "object", "properties": {}}
+
+    def test_glm_coding_base_url(self):
+        provider = GLMCodingProvider(api_key="sk", model="glm-5.3")
+        assert provider.name == "glm-coding"
+        assert provider.base_url == "https://open.bigmodel.cn/api/anthropic"

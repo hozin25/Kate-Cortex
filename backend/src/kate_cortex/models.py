@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 EntrySource = Literal["manual", "chat", "import"]
-ProviderName = Literal["deepseek", "glm"]
+ProviderName = Literal["deepseek", "glm", "glm-coding"]
 
 
 class EntryCreate(BaseModel):

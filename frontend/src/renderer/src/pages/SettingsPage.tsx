@@ -9,7 +9,13 @@ import type { AppSettings, ProviderName } from '@renderer/types'
 
 const PROVIDERS: { name: ProviderName; label: string; keyHint: string; modelHint: string }[] = [
   { name: 'deepseek', label: 'DeepSeek', keyHint: 'sk-…', modelHint: 'deepseek-chat' },
-  { name: 'glm', label: 'GLM（智谱）', keyHint: '…xxx.Sxxxx', modelHint: 'glm-4-flash' }
+  { name: 'glm', label: 'GLM（智谱）', keyHint: '…xxx.Sxxxx', modelHint: 'glm-4-flash' },
+  {
+    name: 'glm-coding',
+    label: 'GLM 编程套餐',
+    keyHint: '…xxx.Sxxxx（与智谱 API key 相同）',
+    modelHint: 'glm-5.3'
+  }
 ]
 
 export function SettingsPage(): React.JSX.Element {
@@ -23,7 +29,7 @@ export function SettingsPage(): React.JSX.Element {
       .then(() => {
         const loaded = useSettingsStore.getState().settings
         if (loaded) {
-          setDraftKeys({ deepseek: '', glm: '' })
+          setDraftKeys(Object.fromEntries(PROVIDERS.map((p) => [p.name, ''])))
           setDraftModel(loaded.default_model)
         }
       })

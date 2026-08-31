@@ -1,5 +1,5 @@
 export type EntrySource = 'manual' | 'chat' | 'import'
-export type ProviderName = 'deepseek' | 'glm'
+export type ProviderName = 'deepseek' | 'glm' | 'glm-coding'
 
 export interface EntrySummary {
   id: string

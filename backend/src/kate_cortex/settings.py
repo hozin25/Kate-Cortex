@@ -12,7 +12,7 @@ DEFAULTS = {
     "vault_path": None,
 }
 
-KNOWN_PROVIDERS = {"deepseek", "glm"}
+KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding"}
 
 
 class SettingsService:
