@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 EntrySource = Literal["manual", "chat", "import"]
 ProviderName = Literal["deepseek", "glm", "glm-coding"]
+EmbeddingProviderName = Literal["glm", "siliconflow"]
 
 
 class EntryCreate(BaseModel):
@@ -130,6 +131,9 @@ class SettingsUpdate(BaseModel):
     rag_default: bool | None = None
     memory_enabled: bool | None = None
     vault_path: str | None = None
+    embedding_provider: EmbeddingProviderName | None = None
+    embedding_model: str | None = None
+    embedding_api_key: str | None = None
 
 
 class SettingsOut(BaseModel):
@@ -139,6 +143,42 @@ class SettingsOut(BaseModel):
     rag_default: bool
     memory_enabled: bool
     vault_path: str | None
+    embedding_provider: str
+    embedding_model: str
+    embedding_api_key: str | None
+
+
+class EmbeddingStatusOut(BaseModel):
+    available: bool
+    indexed: int
+    total: int
+
+
+class EmbeddingRebuildOut(BaseModel):
+    indexed: int
+    total: int
+    failed: int
+
+
+ProjectionMethod = Literal["tsne", "pca", "insufficient", "unavailable"]
+
+
+class ProjectionPointOut(BaseModel):
+    entry_id: str
+    title: str
+    collections: list[str]
+    source: str
+    x: float
+    y: float
+    z: float
+
+
+class ProjectionOut(BaseModel):
+    available: bool
+    method: ProjectionMethod
+    n: int
+    computed_ms: int
+    points: list[ProjectionPointOut]
 
 
 class ProviderTestIn(BaseModel):

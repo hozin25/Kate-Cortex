@@ -1,11 +1,18 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, KeyRound, Plug, Settings2 } from 'lucide-react'
+import { Eye, EyeOff, KeyRound, Layers, Plug, Settings2 } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { toast } from '@renderer/stores/toast'
+import { api } from '@renderer/api/client'
 import { cn } from '@renderer/lib/utils'
-import type { AppSettings, ProviderName } from '@renderer/types'
+import type {
+  AppSettings,
+  EmbeddingProviderName,
+  EmbeddingRebuildResult,
+  EmbeddingStatus,
+  ProviderName
+} from '@renderer/types'
 
 const PROVIDERS: { name: ProviderName; label: string; keyHint: string; modelHint: string }[] = [
   { name: 'deepseek', label: 'DeepSeek', keyHint: 'sk-…', modelHint: 'deepseek-chat' },
@@ -18,11 +25,30 @@ const PROVIDERS: { name: ProviderName; label: string; keyHint: string; modelHint
   }
 ]
 
+const EMBED_PROVIDERS: {
+  name: EmbeddingProviderName
+  label: string
+  modelHint: string
+}[] = [
+  { name: 'glm', label: 'GLM（智谱）', modelHint: 'embedding-3' },
+  { name: 'siliconflow', label: '硅基流动（bge-m3 免费）', modelHint: 'BAAI/bge-m3' }
+]
+
 export function SettingsPage(): React.JSX.Element {
   const { settings, load, update, testProvider, testStatus } = useSettingsStore()
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({})
   const [draftModel, setDraftModel] = useState('')
   const [visible, setVisible] = useState<Record<string, boolean>>({})
+  const [vecStatus, setVecStatus] = useState<EmbeddingStatus | null>(null)
+  const [rebuilding, setRebuilding] = useState(false)
+  const [draftEmbedKey, setDraftEmbedKey] = useState('')
+
+  const loadVecStatus = (): void => {
+    api
+      .get<EmbeddingStatus>('/embeddings/status')
+      .then(setVecStatus)
+      .catch(() => setVecStatus(null))
+  }
 
   useEffect(() => {
     void load()
@@ -34,6 +60,7 @@ export function SettingsPage(): React.JSX.Element {
         }
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : '设置加载失败'))
+    loadVecStatus()
   }, [load])
 
   if (!settings) {
@@ -201,6 +228,95 @@ export function SettingsPage(): React.JSX.Element {
             checked={settings.memory_enabled}
             onChange={(v) => void handleSave({ memory_enabled: v })}
           />
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                <Layers className="size-4 text-aurora-indigo" />
+                语义检索（向量）
+              </div>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                开启知识库引用后，除关键词匹配外还会按语义相似度召回——换个说法提问也能找到。
+                出网内容为条目标题与正文前 1500 字，发送至所选 Embedding
+                服务商，与对话同属本地直连。
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setRebuilding(true)
+                api
+                  .post<EmbeddingRebuildResult>('/embeddings/rebuild')
+                  .then((result) => {
+                    toast.success(`向量索引已重建（${result.indexed}/${result.total} 条）`)
+                    loadVecStatus()
+                  })
+                  .catch((err) => toast.error(err instanceof Error ? err.message : '重建失败'))
+                  .finally(() => setRebuilding(false))
+              }}
+              disabled={!vecStatus?.available || rebuilding}
+              className="flex shrink-0 items-center gap-1 rounded-xl border border-aurora-indigo/25 bg-aurora-indigo/10 px-3 py-2 text-xs text-zinc-200 transition hover:bg-aurora-indigo/20 disabled:opacity-40"
+            >
+              {rebuilding ? <Spinner className="size-3.5" /> : null}
+              重建索引
+            </button>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-zinc-400">Embedding 服务商</span>
+            <select
+              value={settings.embedding_provider}
+              onChange={(e) => {
+                const hint = EMBED_PROVIDERS.find((p) => p.name === e.target.value)?.modelHint
+                void handleSave({
+                  embedding_provider: e.target.value as EmbeddingProviderName,
+                  embedding_model: hint
+                }).then(() => {
+                  toast.info('已切换嵌入模型——两家向量空间不互通，建议点击「重建索引」')
+                  loadVecStatus()
+                })
+              }}
+              className="glass-deep rounded-xl px-3 py-1.5 text-[13px] text-zinc-200 outline-none [&>option]:bg-ink-900"
+            >
+              {EMBED_PROVIDERS.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <span className="font-mono text-xs text-zinc-500">{settings.embedding_model}</span>
+          </div>
+          {settings.embedding_provider === 'siliconflow' && (
+            <div className="mt-3 flex items-center gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="password"
+                  value={draftEmbedKey}
+                  onChange={(e) => setDraftEmbedKey(e.target.value)}
+                  placeholder={
+                    settings.embedding_api_key ? '已保存（输入以覆盖）' : '硅基流动 API Key（sk-…）'
+                  }
+                  className="glass-deep w-full rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+                />
+              </div>
+              <button
+                onClick={() =>
+                  void handleSave({ embedding_api_key: draftEmbedKey.trim() }).then(loadVecStatus)
+                }
+                disabled={!draftEmbedKey.trim()}
+                className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+              >
+                保存
+              </button>
+            </div>
+          )}
+          <p className="mt-2 text-xs leading-5 text-zinc-400">
+            {vecStatus === null
+              ? '状态加载中…'
+              : vecStatus.available
+                ? `已索引 ${vecStatus.indexed} / ${vecStatus.total} 条`
+                : '未启用：需先配置所选服务商的 API Key（GLM 复用上方 GLM Key，硅基流动需单独 Key）'}
+          </p>
         </GlassPanel>
 
         <GlassPanel className="p-5">

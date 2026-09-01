@@ -20,6 +20,7 @@ from .frontmatter import (
 from .linking import extract_links
 from .search import Search
 from .slugify import slugify
+from .vectors import VectorIndex
 
 TRASH_DIR = ".trash"
 
@@ -85,12 +86,20 @@ class SyncReport:
 
 
 class Storage:
-    def __init__(self, config: Config, db: Database, search: Search):
+    def __init__(
+        self,
+        config: Config,
+        db: Database,
+        search: Search,
+        vectors: VectorIndex | None = None,
+    ):
         self.config = config
         self.vault = Path(config.vault_path)
         self.db = db
         self.conn = db.conn
         self.search = search
+        # 向量索引与 FTS 同级（None = 降级为纯 FTS，行为与 v4 一致）
+        self.vectors = vectors
         self.vault.mkdir(parents=True, exist_ok=True)
 
     # ── 创建 ──
@@ -138,6 +147,9 @@ class Storage:
         except Exception:
             md_file.unlink(missing_ok=True)
             raise
+        # 事务提交后再补向量：网络失败不阻断保存（index_entry 内部吞错）
+        if self.vectors:
+            self.vectors.index_entry(entry_id, title, content)
 
         found = self.get_entry(entry_id)
         assert found is not None
@@ -271,6 +283,8 @@ class Storage:
                 encoding="utf-8",
             )
             raise
+        if self.vectors:
+            self.vectors.index_entry(current.id, new_title, new_content)
 
         updated = self.get_entry(current.id)
         assert updated is not None
@@ -291,6 +305,8 @@ class Storage:
         with self.conn:
             self.conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
             self.search.remove_entry(entry_id)
+            if self.vectors:
+                self.vectors.remove_entry(entry_id)
 
     def restore_entry(self, entry_id: str) -> Entry:
         for md_file in (self.vault / TRASH_DIR).rglob("*.md"):
@@ -311,6 +327,8 @@ class Storage:
             shutil.move(str(md_file), str(dest))
             with self.conn:
                 self._write_db(meta, content, rel)
+            if self.vectors:
+                self.vectors.index_entry(meta.id, meta.title, content)
             restored = self.get_entry(meta.id)
             assert restored is not None
             return restored
@@ -344,6 +362,9 @@ class Storage:
         with self.conn:
             self.conn.execute("DELETE FROM entries")
             self.conn.execute("DELETE FROM entries_fts")
+            if self.vectors:
+                # 只清不嵌（VECTOR_SEARCH_PLAN §0.4）：重嵌走显式 rebuild，避免隐式 API 费用
+                self.vectors.clear()
             indexed = 0
             for md_file in self._vault_files():
                 try:

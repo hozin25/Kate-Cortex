@@ -19,7 +19,10 @@
 
 ## 后续路线
 
-- v0.2：向量语义检索 + GLM/DeepSeek 对话
+- v0.2：GLM/DeepSeek 对话；向量语义检索已实现（2026-09-01，FTS5 + sqlite-vec
+  混合检索，GLM embedding-3，见 [DESIGN.md §7.2](./docs/DESIGN.md)）；语义空间
+  三维视图已实现（2026-09-01，知识库「立体」tab，t-SNE 降维点云，见
+  [DESIGN.md §7.3](./docs/DESIGN.md)）
 - v0.3：MCP server，被 Claude Code 调用，自动沉淀任务总结
 
 ## 技术栈
@@ -27,10 +30,10 @@
 | 层 | 技术 |
 |---|---|
 | 桌面壳 | Tauri 2.0 |
-| 前端 | React + TypeScript + Tailwind + CodeMirror |
-| 后端 | Python 3.12 + FastAPI |
+| 前端 | React + TypeScript + Tailwind + CodeMirror；三维视图 three.js + react-three-fiber |
+| 后端 | Python 3.12 + FastAPI；三维投影 scikit-learn（t-SNE/PCA） |
 | 存储 | SQLite + sqlite-vec |
-| LLM | GLM / DeepSeek（OpenAI 兼容） |
+| LLM | GLM / DeepSeek（OpenAI 兼容）；向量检索：GLM embedding-3 或硅基流动 bge-m3（免费） |
 
 详见 [设计文档](./docs/DESIGN.md)。
 

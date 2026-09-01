@@ -180,6 +180,97 @@ git commit -m "docs: project requirements, design and tech stack"
 
 ---
 
+## 阶段 6：向量混合检索（≈1.5 天，2026-09-01 完成）
+
+**目标**：RAG 升级为 FTS + 向量双通道混合检索，同义改写可召回；向量索引
+可查看状态、可重建。实施清单见 [VECTOR_SEARCH_PLAN.md](./VECTOR_SEARCH_PLAN.md)。
+
+| # | 任务 | 产出 | 依赖 |
+|---|---|---|---|
+| 6.0 | spike | sqlite-vec 0.1.9 装包验证：Windows + Py3.12 扩展加载、vec0 TEXT 主键 + cosine 建表、KNN/按主键删/全表删/LEFT JOIN 全可用——**无需映射表兜底** | — |
+| 6.1 | `providers/embedding.py` | `GLMEmbedder`（批量 64/截 1500 字/1024 维）+ `FakeEmbedder`（语义簇确定性向量，测试桩） | — |
+| 6.2 | `db.py` v5 | sqlite-vec 扩展加载（失败降级 `vec_enabled=False`）+ `entries_vec` vec0 表（每次启动幂等建，不进 migration 链） | 6.0 |
+| 6.3 | `vectors.py` | `VectorIndex`：index/remove/query/status/clear/rebuild/backfill（幂等可续跑，缺 md 条目计 failed 不中断） | 6.2 |
+| 6.4 | `storage.py` 挂钩 | create/update/delete/restore 五条路径挂向量；**事务提交后补嵌**，网络失败不阻断保存；reindex 只清不嵌 | 6.3 |
+| 6.5 | `chat/rag.py` | 双通道各取 top6 → RRF（1/(60+rank)）融合取 top3；向量故障当轮退化纯 FTS；签名与 SSE 协议不变 | 6.4 |
+| 6.6 | 设置与端点 | settings 加 `embedding_model`；`GET /api/embeddings/status`、`POST /api/embeddings/rebuild`；设置页状态行 + 重建按钮 + 隐私说明 | 6.3 |
+| 6.7 | 测试与冒烟 | FakeEmbedder 语义簇验收（「出去玩」零词面召回「感冒保暖」条目）；`tests/smoke_embedding.py`（真实 key 三场景） | 全部 |
+
+**执行记录（2026-09-01 完成阶段 6）**：
+- 后端 222 测试通过（+22）；前端 typecheck / ESLint / Vitest 全绿
+- 偏差 1：vec0 建表放 `init_schema()` 幂等执行而非 migration 链——扩展可用性
+  与 schema 版本正交，避免「迁移到 v5 但扩展缺失」的中间态；v4→v5 无数据搬迁
+- 偏差 2：embedder 解析改为「每次调用读 settings」（对齐 ProviderFactory 的
+  每请求构建），用户后配 glm key 免重启
+- FakeEmbedder 首版在构造函数里有解包 bug（`sorted(dict)` 只返回键），
+  被新测试当场抓住——语义簇桩是本次回归防线的关键
+- 验收用例：`test_semantic_recall_across_word_gap`（纯 FTS 下必然空手而归的
+  查询，经向量通道召回）通过；真实 key 冒烟脚本就绪（`smoke_embedding.py`，
+  含 rebuild 端点全量补嵌）
+
+**验收**：
+- `uv run pytest` 全绿；配好 glm key 后设置页显示「已索引 x/y」，重建按钮可用
+- 真实 key 冒烟：`KATE_GLM_KEY=... uv run python tests/smoke_embedding.py`
+
+**增补执行记录（同日：硅基流动 provider）**：
+- 动因：用户智谱标准账户无余额（编程套餐不含 embedding），接免费档
+  `BAAI/bge-m3`（原生 1024 维，与 float[1024] 向量表匹配）
+- embedding.py 抽出 `_OpenAICompatEmbedder` 基类（client_factory 可注入，
+  对齐 chat provider 测试模式）：GLM（批量 64、支持 dimensions）/ 硅基流动
+  （批量 32、bge-m3 固定维度不传 dimensions）
+- settings 新增 `embedding_provider` / `embedding_api_key`（glm 为空时回退
+  provider_keys["glm"]，硅基流动需独立 key）；设置页加服务商切换 + key 输入，
+  切换时提示重建（两家属不同向量空间）
+- 测试 235 通过（+13：批量切分/dimensions 差异/截断/顺序还原/key 归属回退）；
+  冒烟脚本支持 `KATE_SF_KEY=... KATE_EMBEDDING_PROVIDER=siliconflow`
+
+**提交点**：`feat: vector hybrid search with sqlite-vec`
+
+---
+
+## 阶段 7：语义空间三维视图（≈2.5 天，2026-09-01 完成）
+
+**目标**：把向量索引降维成 3D 点云，知识库「立体」tab 可视化语义空间
+（旋转/悬停/点击跳转，按合集着色）。实施清单见
+[VECTOR_GRAPH_PLAN.md](./VECTOR_GRAPH_PLAN.md)。
+
+| # | 任务 | 产出 | 依赖 |
+|---|---|---|---|
+| 7.0 | spike | scikit-learn 1.9 装包；`np.frombuffer` 反序列化验证；t-SNE 3D 耗时实测（300 点 0.79s） | — |
+| 7.1 | `projection.py` | `ProjectionCache`：L2 归一化 → PCA(50) 预降维 → t-SNE 3D（seed 42 确定性）；签名内存缓存；阈值分派（<3 空态 / <20 PCA 兜底 / >5000 降级 PCA） | 7.0 |
+| 7.2 | 端点与装配 | `GET /api/embeddings/projection`、`POST .../refresh`；`app.state.projection` 装配；`ProjectionOut` 模型 | 7.1 |
+| 7.3 | 前端 | three + r3f v9 + drei；`VectorGraph`（点云/OrbitControls/tooltip/图例过滤/WebGL 降级）+ `pointColors` 纯函数；LibraryPage 列表/立体双 tab（`?view=graph`） | 7.2 |
+| 7.4 | 测试与冒烟 | `test_projection.py`（4 簇 × 12 条簇分离验收 + 缓存签名 + 阈值）；API 用例 4 个；`smoke_projection.py`（临时 vault 播种人工验收） | 全部 |
+
+**执行记录（2026-09-01 完成阶段 7）**：
+- 后端 247 测试通过（+12）；前端 typecheck / ESLint / Vitest 全绿（+8：
+  pointColors 纯函数）
+- **偏差 1（算法）**：计划书原定「t-SNE 直接作用于 1024 维向量」，实测
+  小样本下 3D t-SNE 退化为球壳散点（2 簇 24 点簇间/簇内距离比 0.98x）。
+  改为 **PCA 预降维到 min(50, n-1) 再 t-SNE** 的标准管线，2 簇修复至
+  1.40x、4 簇 48 点 ~1.6x、n=200 耗时 0.65s 且逐位确定；已回填计划书 §2
+- **偏差 2（坐标归一）**：计划书原定「逐维 min-max 后等比缩放」，实现改为
+  质心居中 + 等比缩放进 [-1,1]（逐维拉伸不保形，等比才保形状）
+- 调试发现：FakeEmbedder 的 `_unit_vector` 用 `random.random()`（恒正），
+  所有向量落在正象限、两两余弦 ~0.74，与其「跨簇近乎正交」的文档契约不符
+  （对检索验收无碍，间隙仍显著）；本项目**未改** FakeEmbedder，靠 PCA 的
+  隐式中心化消解，留档备查
+- 渲染验收：临时 vault（4 簇 × 10 条）+ 真实后端 + 静态 renderer，浏览器
+  人工通过——点云辉光与配色、图例隐藏、tooltip、点击跳转详情、旋转缩放、
+  列表 tab 回归
+- r3f 的 three.js JSX 属性触发 `react/no-unknown-property`，文件级 eslint
+  豁免并注明原因
+
+**验收**：
+- `uv run pytest` 全绿；`pnpm typecheck && pnpm test` 全绿
+- 人工冒烟：`uv run python tests/smoke_projection.py` 播种临时库 →
+  `KATE_VAULT_PATH=... KATE_DB_PATH=... uv run uvicorn kate_cortex.main:app
+  --port 1738` → 知识库「立体」tab
+
+**提交点**：`feat: 3d semantic space view with tsne projection`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |

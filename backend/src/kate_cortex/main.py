@@ -8,9 +8,12 @@ from .chat.service import ChatService
 from .config import Config, load_config
 from .db import connect as db_connect
 from .providers import ProviderFactory
+from .providers.embedding import GLMEmbedder, SiliconFlowEmbedder
+from .projection import ProjectionCache
 from .search import Search
 from .settings import SettingsService
 from .storage import Storage
+from .vectors import VectorIndex
 
 APP_NAME = "kate-cortex"
 # dev 期渲染进程由 vite 提供，端口可能被占用而顺延（5173/5174/…），按正则放行
@@ -29,16 +32,34 @@ def create_app(config: Config | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     database = db_connect(config.db_path)
-    storage = Storage(config=config, db=database, search=Search(database.conn))
+    settings_service = SettingsService(database.conn)
+    vector_index = (
+        VectorIndex(database.conn, _make_embedder_factory(settings_service))
+        if database.vec_enabled
+        else None
+    )
+    projection = (
+        ProjectionCache(database.conn, settings_service.get_all)
+        if database.vec_enabled
+        else None
+    )
+    storage = Storage(
+        config=config,
+        db=database,
+        search=Search(database.conn),
+        vectors=vector_index,
+    )
     _run_startup_migrations(database, storage)
     app.state.config = config
     app.state.db = database
     app.state.storage = storage
     app.state.chat_service = ChatService(database.conn)
-    app.state.settings_service = SettingsService(database.conn)
+    app.state.settings_service = settings_service
     app.state.provider_factory = ProviderFactory(app.state.settings_service)
+    app.state.vector_index = vector_index
+    app.state.projection = projection
 
-    from .routes import chat, collections, entries, health, settings, sync
+    from .routes import chat, collections, embeddings, entries, health, settings, sync
 
     app.include_router(health.router, prefix="/api")
     app.include_router(entries.router, prefix="/api")
@@ -46,7 +67,31 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(sync.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
+    app.include_router(embeddings.router, prefix="/api")
     return app
+
+
+def _make_embedder_factory(settings_service):
+    """每次调用时从 settings 解析 embedding provider（后配 key 免重启）：
+    siliconflow 用独立 embedding_api_key；glm 为空时回退复用 provider key。
+    缺 key 返回 None → 向量检索降级为纯 FTS"""
+
+    def factory() -> GLMEmbedder | SiliconFlowEmbedder | None:
+        settings = settings_service.get_all()
+        provider = settings.get("embedding_provider", "glm")
+        model = settings.get("embedding_model")
+        api_key = settings.get("embedding_api_key")
+        if provider == "siliconflow":
+            if not api_key:
+                return None
+            return SiliconFlowEmbedder(api_key=api_key, model=model)
+        if not api_key:
+            api_key = settings.get("provider_keys", {}).get("glm")
+        if not api_key:
+            return None
+        return GLMEmbedder(api_key=api_key, model=model)
+
+    return factory
 
 
 def _run_startup_migrations(database, storage) -> None:

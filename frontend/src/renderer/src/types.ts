@@ -1,5 +1,6 @@
 export type EntrySource = 'manual' | 'chat' | 'import'
 export type ProviderName = 'deepseek' | 'glm' | 'glm-coding'
+export type EmbeddingProviderName = 'glm' | 'siliconflow'
 
 export interface EntrySummary {
   id: string
@@ -100,4 +101,39 @@ export interface AppSettings {
   rag_default: boolean
   memory_enabled: boolean
   vault_path: string | null
+  embedding_provider: EmbeddingProviderName
+  embedding_model: string
+  embedding_api_key: string | null
+}
+
+export interface EmbeddingStatus {
+  available: boolean
+  indexed: number
+  total: number
+}
+
+export interface EmbeddingRebuildResult {
+  indexed: number
+  total: number
+  failed: number
+}
+
+export type ProjectionMethod = 'tsne' | 'pca' | 'insufficient' | 'unavailable'
+
+export interface ProjectionPoint {
+  entry_id: string
+  title: string
+  collections: string[]
+  source: string
+  x: number
+  y: number
+  z: number
+}
+
+export interface Projection {
+  available: boolean
+  method: ProjectionMethod
+  n: number
+  computed_ms: number
+  points: ProjectionPoint[]
 }

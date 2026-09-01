@@ -198,6 +198,13 @@ CREATE VIRTUAL TABLE entries_fts USING fts5(
   entry_id UNINDEXED
 );
 
+-- ── 向量检索（v5，§7.2）：vec0 虚表；sqlite-vec 扩展加载失败时此表缺席，
+-- 系统降级为纯 FTS，不阻塞启动 ──
+CREATE VIRTUAL TABLE entries_vec USING vec0(
+  entry_id TEXT PRIMARY KEY,
+  embedding float[1024] distance_metric=cosine
+);
+
 -- ── 对话（新增）──
 CREATE TABLE conversations (
   id          TEXT PRIMARY KEY,         -- kc_conv_xxx (uuid)
@@ -285,8 +292,12 @@ PUT    /api/settings                    provider keys / 默认模型 / RAG 默�
 POST   /api/providers/test              {provider} 连通性测试
 
 # 系统
-POST   /api/sync                        重新索引
+POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）
 GET    /api/health                      {app: "kate-cortex", version}
+
+# 向量索引（v5，§7.2）
+GET    /api/embeddings/status           {available, indexed, total}
+POST   /api/embeddings/rebuild          清空向量表 + 全量重嵌
 ```
 
 ### 4.2 SSE 事件协议（`POST /api/chat/sessions/:id/chat`）
@@ -430,9 +441,61 @@ schema v4 为 entries 增加 `keywords`（JSON 数组，场景触发词）与
 靠**保存与检索两端都由 LLM 生成同一话题空间的场景关键词**来桥接语义鸿沟，
 在 sqlite-vec（v0.2）落地前以零新依赖覆盖该场景。
 
+### 7.2 向量混合检索（2026-09-01 增补，schema v5）
+
+RAG 检索升级为**双通道混合**：FTS5（字面精确：代码/报错/API 名）+ 向量
+（语义相似：同义改写）。「问『身份』但条目只有『学生』」这一 FTS 硬伤
+（§13 风险触发器的真实案例）由向量通道原生解决。§7 的档案常驻注入与
+§7.1 的关键词桥接均保留——前者保证画像类问题确定命中，后者可解释且是
+常驻记忆注入的基础。
+
+- **存储**：`entries_vec`（vec0，主键 entry_id + `float[1024]` cosine）。
+  向量是**第三类索引**（与 FTS 同级）：md 仍是唯一事实来源，向量表随时
+  可清空重建；sqlite-vec 扩展加载失败 → 整体降级纯 FTS（v4 行为），不阻塞启动
+- **嵌入**：双 provider（OpenAI 兼容基类）——**GLM embedding-3**（复用 glm
+  provider key、1024 维、批量 ≤64）或**硅基流动 BAAI/bge-m3**（免费档、原生
+  1024 维与向量表匹配、批量 ≤32、独立 `embedding_api_key`）。settings
+  `embedding_provider` 切换（`glm` 默认，key 为空回退 provider key）；key
+  每次调用时从 settings 解析，后配免重启。出网内容 = 标题 + 正文前 1500 字
+  → 所选服务商，与 LLM 对话同属本地直连。**两家向量空间不互通，切换
+  provider 后必须重建索引**（设置页切换时有提示）
+- **写入**：md/SQLite 事务提交**之后**补嵌；网络失败仅告警不阻断保存，
+  缺口由 backfill（幂等可续跑）补齐。「重新索引」只清向量不重嵌——重嵌
+  走设置页「重建索引」按钮，避免一键操作产生隐式 API 费用
+- **融合**（`chat/rag.py`）：两通道各取 top 6，RRF 融合
+  （score = Σ 1/(60+rank)，按 entry_id 去重）取 top 3——FTS rank 与
+  cosine distance 量纲不可比，排名融合免归一化；向量通道当轮故障时
+  退化为纯 FTS，不拖垮对话。citations / knowledge_refs 协议不变
+
 **开关与交互**：settings `memory_enabled`（默认开）控制工具挂载与常驻注入；
 自动保存推送 `memory_saved` SSE → 前端轻量记忆卡片（标题 + 关键词 chips +
 撤销=软删条目）；recall 命中推送 `memory_refs` → 「想起」chips。
+
+### 7.3 语义空间三维视图（2026-09-01 增补）
+
+把 §7.2 的向量索引再派生一层**可视视图**：1024 维向量降维到 3D，Library
+「立体」tab 展示可交互点云（旋转/缩放/悬停 tooltip/点击跳转条目），按合集
+着色。**纯本地计算、零出网**——只读已存向量、不依赖 embedder（删了 key
+图仍在）；md/向量表/业务表零改动。
+
+- **降维管线**（`projection.py`，scikit-learn）：L2 归一化 → PCA 预降维到
+  min(50, n-1) 维 → t-SNE 3D（cosine、pca init、`random_state=42`、自适应
+  perplexity=min(30, (n-1)/3)）。PCA 预处理是关键：高维原始向量上直接
+  t-SNE 优化不稳（实测小样本退化为球壳散点），预处理后同输入必同输出。
+  条目 <3 不投影；3≤n<20 或 >5000 直接 PCA 兜底。坐标以质心为中心等比
+  缩放进 [-1, 1] 立方体
+- **缓存**：坐标不落库（派生视图的派生视图），进程内存缓存，签名 =
+  (embedding provider, model, 向量数, 条目数, MAX(updated_at))——增删改
+  条目或切换 embedding provider 后首次 GET 自动重算；另有 POST refresh
+  强制重算。数百条规模全量重算 1~2s（实测 300 点 0.8s）
+- **前端**：three.js + @react-three/fiber（v9，React 19 兼容）+ drei
+  OrbitControls；Points + 径向渐变软粒子贴图 + AdditiveBlending 呈辉光感
+  （无后处理）；合集→颜色为纯函数（全量合集名排序稳定取色，点色取首个
+  合集）；图例点击隐藏/显示合集；WebGL 不可用 / 条目不足 / vec 扩展缺失
+  → 对应空态降级
+- **已知局限**：t-SNE 布局随库内容变化整体漂移（固定 seed 只保证同输入
+  同输出，属算法固有属性）；极小样本 + 极少簇数下 3D t-SNE 有球壳退化
+  倾向（真实库主题数远多于 2，实测 4 簇 48 点簇间/簇内距离比 ~1.6x）
 
 ---
 
@@ -444,14 +507,14 @@ schema v4 为 entries 增加 `keywords`（JSON 数组，场景触发词）与
 frontend/src/
   pages/
     ChatPage.tsx          # 默认页：左会话列表 + 主对话区
-    LibraryPage.tsx       # 知识库：过滤条 + 卡片列表
+    LibraryPage.tsx       # 知识库：列表/立体双 tab（立体 = 语义空间三维点云，§7.3）
     EntryDetailPage.tsx   # 详情 + 元数据 + 反向链接 + 来源徽标(source=chat 可跳回会话)
     EntryEditPage.tsx     # 表单 + CodeMirror
     SettingsPage.tsx      # Provider/key/模型/RAG 默认/vault 路径/连通测试
   components/
     chat/    SessionSidebar · MessageBubble(markdown+shiki 流式渲染) · ChatInput
              SavedCard · SuggestCard(确认/忽略) · CitationChips · RagToggle
-    library/ EntryList · FilterBar · SearchBox · EntryCard
+    library/ VectorGraph(语义空间三维点云，§7.3) · pointColors(合集配色纯函数)
     editor/  FrontmatterForm · CodeMirrorEditor
     common/  MarkdownView · GlassPanel(毛玻璃容器) · GradientText
   stores/   chatStore · settingsStore · libraryStore   (zustand)
@@ -566,7 +629,8 @@ MVP 合计 6~7 人天。
 - [ ] 对话历史导出 markdown 的格式（v0.2）
 - [ ] RAG 注入条数 / token 预算实测调参（当前 3 条 / 2000 tokens 为拍板值）
 - [ ] API key：MVP 明文 settings 表，何时升级 OS keyring
-- [ ] embedding provider 选型（v0.2 前定）
+- [x] embedding provider 选型（2026-09-01 拍板）：GLM embedding-3——OpenAI 兼容、
+  复用现有 glm key 用户零新配置、支持 1024 维（见 §7.2）；硅基流动/本地模型留扩展位
 - [x] 项目名：维持 Kate-Cortex（2026-08-17 拍板）
 
 ---

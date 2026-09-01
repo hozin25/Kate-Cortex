@@ -30,6 +30,34 @@ class TestSchema:
         tables = {row[0] for row in rows}
         assert EXPECTED_TABLES <= tables
 
+    def test_vec_table_matches_extension_availability(self, database):
+        rows = database.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ).fetchall()
+        tables = {row[0] for row in rows}
+        if database.vec_enabled:
+            assert "entries_vec" in tables
+        else:
+            # 扩展缺失时降级：vec 表缺席，其余 schema 正常
+            assert "entries_vec" not in tables
+
+    def test_degraded_mode_skips_vec_without_blocking(self, tmp_path):
+        class DegradedDatabase(db_mod.Database):
+            def _load_vec_extension(self) -> bool:
+                return False
+
+        database = DegradedDatabase(tmp_path / "index.sqlite")
+
+        assert not database.vec_enabled
+        assert database.conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        tables = {
+            row[0]
+            for row in database.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        assert EXPECTED_TABLES <= tables
+
     def test_records_schema_version(self, database):
         version = database.conn.execute("SELECT version FROM schema_version").fetchone()
         assert version[0] == db_mod.SCHEMA_VERSION
@@ -137,6 +165,38 @@ class TestMigrateV3ToV4:
         assert version[0] == db_mod.SCHEMA_VERSION
         assert database.migrated_from == 3
         assert database.conn.execute("PRAGMA foreign_key_check").fetchall() == []
+
+
+class TestMigrateV4ToV5:
+    def _make_v4_db(self, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.executescript(V3_SCHEMA)
+        conn.execute("ALTER TABLE entries ADD COLUMN keywords TEXT")
+        conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER")
+        conn.execute("UPDATE schema_version SET version = 4")
+        conn.commit()
+        conn.close()
+
+    def test_bumps_version_and_keeps_rows(self, tmp_path):
+        db_path = tmp_path / "index.sqlite"
+        self._make_v4_db(db_path)
+
+        database = db_mod.connect(db_path)
+
+        version = database.conn.execute("SELECT version FROM schema_version").fetchone()
+        assert version[0] == db_mod.SCHEMA_VERSION == 5
+        assert database.migrated_from == 4
+        row = database.conn.execute("SELECT id FROM entries").fetchone()
+        assert row[0] == "kc_20260818_001"
+        assert database.conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        if database.vec_enabled:
+            tables = {
+                r[0]
+                for r in database.conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            assert "entries_vec" in tables
 
 
 V1_SCHEMA = """

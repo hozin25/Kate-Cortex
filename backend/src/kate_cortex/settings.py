@@ -10,6 +10,9 @@ DEFAULTS = {
     "rag_default": True,
     "memory_enabled": True,
     "vault_path": None,
+    "embedding_provider": "glm",  # glm | siliconflow
+    "embedding_model": "embedding-3",
+    "embedding_api_key": None,  # siliconflow 必填；glm 为空时回退 provider_keys["glm"]
 }
 
 KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding"}

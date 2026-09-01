@@ -1,9 +1,19 @@
 """SQLite 连接 + 全量 schema + 简易 migration（DESIGN.md §3.3）"""
 
+import logging
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+logger = logging.getLogger(__name__)
+
+SCHEMA_VERSION = 5
+
+# 向量混合检索（VECTOR_SEARCH_PLAN.md §4）：维度/距离度量在此定死，
+# 变更维度须整表重建（rebuild 端点覆盖）
+VEC_TABLE_SQL = (
+    "CREATE VIRTUAL TABLE IF NOT EXISTS entries_vec USING vec0("
+    "entry_id TEXT PRIMARY KEY, embedding float[1024] distance_metric=cosine)"
+)
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_version (
@@ -92,11 +102,25 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")
+        self.vec_enabled = self._load_vec_extension()
         self.init_schema()
 
     @property
     def conn(self) -> sqlite3.Connection:
         return self._conn
+
+    def _load_vec_extension(self) -> bool:
+        """加载 sqlite-vec 可加载扩展；失败仅告警降级为纯 FTS，不阻塞启动"""
+        try:
+            import sqlite_vec
+
+            self._conn.enable_load_extension(True)
+            sqlite_vec.load(self._conn)
+            self._conn.enable_load_extension(False)
+            return True
+        except Exception as exc:
+            logger.warning("sqlite-vec 扩展加载失败，向量检索降级为纯 FTS: %s", exc)
+            return False
 
     def init_schema(self) -> None:
         self._conn.executescript(_SCHEMA)
@@ -109,6 +133,10 @@ class Database:
             current = self._conn.execute("SELECT version FROM schema_version").fetchone()[0]
             if current != SCHEMA_VERSION:
                 self._migrate(current)
+        if self.vec_enabled:
+            # vec0 表不进 migration 链：扩展可用性与 schema 版本正交，
+            # 每次启动 IF NOT EXISTS 幂等创建，避免「迁移到 v5 但扩展缺失」中间态
+            self._conn.execute(VEC_TABLE_SQL)
         self._conn.commit()
 
     def _migrate(self, current: int) -> None:
@@ -120,6 +148,8 @@ class Database:
             self._drop_tag_tables_and_rebuild_fts()
         if current < 4:
             self._add_memory_columns()
+        if current < 5:
+            pass  # v5：向量检索（entries_vec）。无数据搬迁，建表见 init_schema
         self._conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
 
     def _rebuild_entries_without_type(self) -> None:

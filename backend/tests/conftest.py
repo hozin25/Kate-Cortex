@@ -16,8 +16,23 @@ def pytest_configure():
 
 import kate_cortex.db as db_mod
 from kate_cortex.config import Config, load_config
+from kate_cortex.providers.embedding import FakeEmbedder
 from kate_cortex.search import Search
 from kate_cortex.storage import Storage
+from kate_cortex.vectors import VectorIndex
+
+# 语义簇（向量检索验收配置）：跨词面场景属同一生活语境，纯 FTS 无法互相召回
+SEMANTIC_CLUSTERS = {
+    "生活健康": ["感冒", "保暖", "健康", "出行", "出去玩", "天气"],
+    "编程": ["redis", "python", "fastapi", "连接池", "中间件"],
+}
+
+
+class FailingEmbedder:
+    """embed 一律抛错，验证写入路径不被网络故障阻断"""
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        raise RuntimeError("embedding boom")
 
 
 @pytest.fixture
@@ -34,6 +49,19 @@ def env(tmp_path, monkeypatch):
 def storage(env):
     database = db_mod.connect(env.db_path)
     return Storage(config=env, db=database, search=Search(database.conn))
+
+
+@pytest.fixture
+def vector_storage(env):
+    """带向量索引的 Storage：FakeEmbedder 按语义簇生成确定性向量"""
+    database = db_mod.connect(env.db_path)
+    index = VectorIndex(
+        database.conn, lambda: FakeEmbedder(clusters=SEMANTIC_CLUSTERS)
+    )
+    storage = Storage(
+        config=env, db=database, search=Search(database.conn), vectors=index
+    )
+    return storage, index
 
 
 @pytest.fixture

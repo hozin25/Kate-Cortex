@@ -23,6 +23,60 @@ class TestRetrieve:
         assert retrieve(storage, "量子纠缠实验") == []
 
 
+class TestHybridRetrieve:
+    """FTS + 向量 RRF 融合（VECTOR_SEARCH_PLAN §5）"""
+
+    def test_semantic_recall_across_word_gap(self, vector_storage):
+        """验收用例：零词面重合时必须靠向量召回（纯 FTS 下必空手而归）"""
+        storage, _ = vector_storage
+        storage.create_entry(
+            title="感冒护理记录",
+            source="manual",
+            content="感冒了，医生叮嘱出行注意保暖，多喝热水。",
+        )
+        storage.create_entry(
+            title="Redis pipeline 踩坑",
+            source="manual",
+            content="pipeline 事务模式下不返回结果。",
+        )
+
+        snippets = retrieve(storage, "明天出去玩要准备什么")
+
+        assert snippets, "零词面重合，向量通道必须召回"
+        assert snippets[0].title == "感冒护理记录"
+
+    def test_rrf_boosts_dual_channel_hit(self, vector_storage):
+        """FTS 与向量双通道同时命中的条目排最前"""
+        storage, _ = vector_storage
+        dual = storage.create_entry(
+            title="出行准备清单",
+            source="manual",
+            content="看天气，备好衣物。",
+        )
+        storage.create_entry(
+            title="感冒护理记录",
+            source="manual",
+            content="感冒了，注意保暖。",
+        )
+
+        snippets = retrieve(storage, "出行准备")
+
+        assert snippets[0].entry_id == dual.id
+
+    def test_vector_failure_falls_back_to_fts(self, vector_storage, monkeypatch):
+        storage, index = vector_storage
+        storage.create_entry(title="连接池调优", source="manual", content="max_size 20")
+
+        def boom(text, limit=10):
+            raise RuntimeError("embedding down")
+
+        monkeypatch.setattr(index, "query", boom)
+
+        snippets = retrieve(storage, "连接池调优")
+
+        assert [s.title for s in snippets] == ["连接池调优"]
+
+
 class TestBuildSystemPrompt:
     def test_contains_persona_and_tool_rules(self):
         prompt = build_system_prompt(None)
