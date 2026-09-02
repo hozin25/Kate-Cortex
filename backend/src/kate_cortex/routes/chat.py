@@ -7,6 +7,7 @@ from ..chat.agent import run_agent_chat, sse as sse_event
 from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
+from ..mcp_client import list_mcp_tools
 from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
 from ..providers import DEFAULT_MODELS
 from ..providers.base import ProviderError
@@ -80,6 +81,8 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
     )
     memory_enabled = settings.get("memory_enabled", True)
+    mcp_url = (settings.get("mcp_url") or "").strip()
+    export_dir = (settings.get("export_dir") or "").strip() or None
 
     chat_service.append_message(session_id, "user", payload.content)
     chat_service.ensure_title(session_id, payload.content)
@@ -101,6 +104,20 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         memories = (
             resident_memories(request.app.state.storage) if memory_enabled else []
         )
+        mcp_tools: list[dict] = []
+        if mcp_url:
+            try:
+                mcp_tools = list_mcp_tools(mcp_url)
+            except Exception as exc:
+                yield sse_event(
+                    "mcp_notice",
+                    {
+                        "message": (
+                            "外部工具服务连接失败，本次回答没有实时数据："
+                            f"{exc}"
+                        )
+                    },
+                )
         yield sse_event(
             "citations",
             {
@@ -123,6 +140,9 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             ],
             memory_snippets=memories,
             memory_enabled=memory_enabled,
+            mcp_tools=mcp_tools,
+            mcp_url=mcp_url if mcp_tools else None,
+            export_dir=export_dir,
         )
 
     return StreamingResponse(generate(), media_type="text/event-stream")

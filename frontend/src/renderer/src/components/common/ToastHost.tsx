@@ -1,17 +1,19 @@
 import { AnimatePresence, motion } from 'motion/react'
-import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react'
+import { AlertCircle, AlertTriangle, CheckCircle2, Info, X } from 'lucide-react'
 import { useToastStore } from '@renderer/stores/toast'
 
 const KIND_STYLES = {
   error: 'border-rose-400/25 bg-rose-500/12 text-rose-100',
   success: 'border-emerald-400/25 bg-emerald-500/12 text-emerald-100',
-  info: 'border-sky-400/25 bg-sky-500/12 text-sky-100'
+  info: 'border-sky-400/25 bg-sky-500/12 text-sky-100',
+  warning: 'border-amber-400/25 bg-amber-500/12 text-amber-100'
 } as const
 
 const KIND_ICONS = {
   error: AlertCircle,
   success: CheckCircle2,
-  info: Info
+  info: Info,
+  warning: AlertTriangle
 } as const
 
 export function ToastHost(): React.JSX.Element {

@@ -288,8 +288,9 @@ POST   /api/chat/sessions/:id/chat      发消息 → SSE 流式响应
 
 # 设置
 GET    /api/settings
-PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径
+PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径 / mcp_url / export_dir
 POST   /api/providers/test              {provider} 连通性测试
+POST   /api/mcp/test                    MCP 端点连通性测试（list_tools）
 
 # 系统
 POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）
@@ -312,6 +313,8 @@ POST   /api/embeddings/rebuild          清空向量表 + 全量重嵌
 | `suggest` | `{title, collections, preview}` | AI 建议卡片（**未入库**，等用户确认；合集建议可改可拒） |
 | `memory_saved` | `{entry_id, slug, title, keywords, replaced}` | save_memory 已自动记住/更新 → 前端渲染记忆卡片（可撤销） |
 | `memory_refs` | `{query, memories: [{entry_id, title, content, keywords, created_at}]}` | recall_memory 命中相关记忆 → 前端渲染「想起」chips；无命中不推 |
+| `mcp_notice` | `{message}` | MCP 端点配置了但连接失败 → 前端 toast 警告，本次对话降级为无外部工具继续 |
+| `file_saved` | `{title, file_path}` | export_markdown 已落盘独立 .md 文件 → 前端 toast 显示保存路径 |
 | `done` | `{message_id}` | 消息落库完成 |
 | `error` | `{message}` | 出错 |
 
@@ -364,6 +367,15 @@ providers/
 参数同上。description：*"当对话中出现值得长期保留的结论、方法或决策（即使用户没要求），
 调用此工具生成保存建议，交由用户确认。不要在用户没确认前真正保存。"*
 
+**export_markdown**（2026-09-03 增补，交付独立文档文件）：
+
+参数：`title`（同时用作文件名）、`content_markdown`（完整文档）。把内容写成
+**不含 frontmatter 的独立 .md 文件**，存入导出文件夹（settings `export_dir`，默认
+`文档\Kate-Cortex 导出`，在 vault **之外**——vault 是 `rglob("*.md")` 递归索引的，
+放里面会被误收录）。与 save_knowledge 的分工：知识资产入库 → save_knowledge；
+交付独立文件（旅游行程 / 报告）→ export_markdown。文件名清洗 Windows 非法字符，
+重名自动追加 ` (2)`。SSE 推 `file_saved`，前端 toast 显示路径。
+
 ### 6.2 执行流程（agent loop）
 
 ```
@@ -389,6 +401,28 @@ providers/
 [用户档案（常驻注入）：「个人信息」合集的条目；回答与用户本人相关的问题直接采用]
 [RAG 知识（可选注入）：以下来自用户知识库，回答可参考并注明来源条目标题]
 ```
+
+### 6.3 外部工具接入（MCP client，2026-09-02 增补）
+
+通过 **MCP Streamable HTTP** 让 agent 调用外部工具服务（典型：高德地图 MCP Server，
+获得 POI 搜索 / 景点详情 / 路线规划 / 天气查询，支撑旅游行程规划等实时数据场景）。
+
+- **配置**：settings 表新增 `mcp_url`（完整 Streamable HTTP 端点，key 直接拼在
+  URL 上，如 `https://mcp.amap.com/mcp?key=…`；留空停用）。设置页可填、可一键
+  测试（`POST /api/mcp/test` 走真实 `list_tools`）
+- **客户端**（`mcp_client.py`）：官方 mcp SDK（v2）+ Streamable HTTP 传输，对同步
+  agent loop 暴露两个同步接口（内部 `asyncio.run`，每次调用独立连接）：
+  `list_mcp_tools(url)`（`list_tools` → 转 OpenAI function-calling 工具表）、
+  `call_mcp_tool(url, name, args)`（`call_tool` → 结果文本原样回传模型）
+- **agent loop 融合**：MCP 工具 schema 并入 tools 表尾部；本地名未命中的 tool_call
+  转发 MCP。工具结果是纯文本 → 不产生独立 SSE 事件，直接作为 tool 消息回传；
+  `tool_calls` 照常落库。`MAX_TOOL_ROUNDS` 3 → 8（行程规划需反复搜索 + 路线规划）
+- **降级**：每轮对话开始时拉一次工具清单，连接失败推 `mcp_notice`（前端 toast）
+  后正常继续——只是没有实时数据，不阻断对话
+- **提示词**：`mcp_enabled` 时注入「外部实时工具」规则（实时信息必须查工具、
+  行程按天分节 Markdown 输出、注明数据来源、失败如实告知）
+- 现实约束：携程 / 美团 / 马蜂窝无公开 API；地图类（高德 / 百度 / 腾讯）有官方
+  MCP，个人开发者免费额度即可用
 
 ---
 

@@ -22,7 +22,9 @@
 - v0.2：GLM/DeepSeek 对话；向量语义检索已实现（2026-09-01，FTS5 + sqlite-vec
   混合检索，GLM embedding-3，见 [DESIGN.md §7.2](./docs/DESIGN.md)）；语义空间
   三维视图已实现（2026-09-01，知识库「立体」tab，t-SNE 降维点云，见
-  [DESIGN.md §7.3](./docs/DESIGN.md)）
+  [DESIGN.md §7.3](./docs/DESIGN.md)）；MCP client 已实现（2026-09-02，Streamable
+  HTTP 接入外部工具服务，如高德地图 MCP——POI / 路线 / 天气实时查询，可在对话里
+  做旅游行程规划并输出 Markdown，见 [DESIGN.md §6.3](./docs/DESIGN.md)）
 - v0.3：MCP server，被 Claude Code 调用，自动沉淀任务总结
 
 ## 技术栈

@@ -34,7 +34,26 @@ TOOL_RULES = """## 工具使用规则
 
 ### 总结质量
 - save_knowledge 总结时聚焦当前讨论主题：保留结论、方法、代码，剔除寒暄与过程。
-- 引用了用户知识库内容时，注明来源条目标题。"""
+- 引用了用户知识库内容时，注明来源条目标题。
+
+### 导出 Markdown 文件（export_markdown）
+- 用户要求「保存成文件」「导出 md」「存到文件夹」「给我一份 md 文件」时，调用
+  export_markdown，content_markdown 必须是完整文档（含标题与全文），严禁只在
+  聊天里输出格式化文本冒充文件，也不许只给片段。导出成功后向用户告知保存路径。
+- 与 save_knowledge 的分工：沉淀为可检索的知识资产 → save_knowledge；交付一份
+  独立文档文件（如旅游行程、报告、清单）→ export_markdown。
+- 行程规划完成并经用户确认后，可主动提议「要不要导出成 md 文件」，由用户决定。"""
+
+MCP_RULES = """### 外部实时工具（MCP：地图 / 景点 / 路线 / 天气）
+- 工具列表中的 MCP 外部工具（POI 搜索、景点详情、路线规划、天气查询等）返回真实
+  数据。涉及景点门票、开放时间、评分、距离、天气等实时信息时，必须先调用工具查询，
+  严禁凭印象编造价格与营业时间。
+- 做旅游行程规划时：先逐个搜索景点并查看详情（名称、评分、地址、建议游玩时长），
+  再用路线规划 / 距离测算安排每日动线（同一天的活动尽量集中在同一片区），必要时
+  查询天气给出穿衣与随身物品提示。
+- 最终行程以 Markdown 输出：按天分节，含景点亮点、地址、交通方式与实用提示；
+  数据来自工具查询时注明数据来源（如「数据来源：高德地图」）。
+- 工具调用失败或返回为空时如实告知，可基于常识给出建议，但提醒用户自行核实关键信息。"""
 
 KNOWLEDGE_HEADER = (
     "## 用户知识库参考\n"
@@ -75,8 +94,9 @@ def build_system_prompt(
     profile_snippets=None,
     collections=None,
     memory_snippets=None,
+    mcp_enabled: bool = False,
 ) -> str:
-    parts = [PERSONA, TOOL_RULES]
+    parts = [PERSONA, TOOL_RULES + "\n\n" + MCP_RULES if mcp_enabled else TOOL_RULES]
     if profile_snippets:
         blocks = [f"### {s.title}\n{s.content}" for s in profile_snippets]
         parts.append(PROFILE_HEADER + "\n\n" + "\n\n".join(blocks))

@@ -134,6 +134,8 @@ class SettingsUpdate(BaseModel):
     embedding_provider: EmbeddingProviderName | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
+    mcp_url: str | None = None
+    export_dir: str | None = None
 
 
 class SettingsOut(BaseModel):
@@ -146,6 +148,8 @@ class SettingsOut(BaseModel):
     embedding_provider: str
     embedding_model: str
     embedding_api_key: str | None
+    mcp_url: str | None
+    export_dir: str | None
 
 
 class EmbeddingStatusOut(BaseModel):

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 export interface Toast {
   id: number
-  kind: 'error' | 'success' | 'info'
+  kind: 'error' | 'success' | 'info' | 'warning'
   message: string
 }
 
@@ -27,5 +27,6 @@ export const useToastStore = create<ToastState>((set, get) => ({
 export const toast = {
   error: (message: string): void => useToastStore.getState().push('error', message),
   success: (message: string): void => useToastStore.getState().push('success', message),
-  info: (message: string): void => useToastStore.getState().push('info', message)
+  info: (message: string): void => useToastStore.getState().push('info', message),
+  warning: (message: string): void => useToastStore.getState().push('warning', message)
 }

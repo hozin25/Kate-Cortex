@@ -13,6 +13,8 @@ DEFAULTS = {
     "embedding_provider": "glm",  # glm | siliconflow
     "embedding_model": "embedding-3",
     "embedding_api_key": None,  # siliconflow 必填；glm 为空时回退 provider_keys["glm"]
+    "mcp_url": None,  # MCP Streamable HTTP 端点（含 key），如高德地图；留空停用
+    "export_dir": None,  # export_markdown 导出文件夹；空则用 文档\Kate-Cortex 导出
 }
 
 KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding"}

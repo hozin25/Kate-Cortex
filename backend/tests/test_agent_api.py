@@ -3,6 +3,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from kate_cortex.chat.agent import MAX_TOOL_ROUNDS
 from kate_cortex.config import Config
 from kate_cortex.main import create_app
 from kate_cortex.providers.base import Done, TextDelta, ToolCallDelta
@@ -179,7 +180,7 @@ class TestAgentLoopEdges:
         assert names == ["citations", "tool_result", "suggest", "delta", "done"]
         assert client.get("/api/entries").json()["total"] == 1
 
-    def test_tool_round_limit_stops_at_three(self, client):
+    def test_tool_round_limit_stops_at_max(self, client):
         session_id = start_session(client)
         endless_tool = tool_call_deltas("call_loop", "suggest_save", SUGGEST_ARGS) + [Done("tool_calls")]
         fake = FakeProvider(rounds=[endless_tool])
@@ -190,7 +191,7 @@ class TestAgentLoopEdges:
         names = [name for name, _ in events]
 
         suggest_count = names.count("suggest")
-        assert suggest_count == 3
+        assert suggest_count == MAX_TOOL_ROUNDS
         assert names[-1] == "done"
 
     def test_malformed_tool_args_feed_error_back(self, client):
@@ -226,6 +227,7 @@ class TestAgentLoopEdges:
         assert tool_names == [
             "save_knowledge",
             "suggest_save",
+            "export_markdown",
             "save_memory",
             "recall_memory",
         ]
@@ -239,7 +241,7 @@ class TestAgentLoopEdges:
         chat(client, session_id)
 
         tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
-        assert tool_names == ["save_knowledge", "suggest_save"]
+        assert tool_names == ["save_knowledge", "suggest_save", "export_markdown"]
 
 
 class TestMemoryFlow:

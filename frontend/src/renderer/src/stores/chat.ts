@@ -163,6 +163,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
             set({ memoryCards: [...s.memoryCards, data as unknown as MemorySavedPayload] })
           } else if (event === 'memory_refs') {
             set({ memoryRefs: (data.memories as MemoryRefItem[]) ?? [] })
+          } else if (event === 'mcp_notice') {
+            toast.warning(String(data.message ?? '外部工具服务异常'))
+          } else if (event === 'file_saved') {
+            toast.success(`已导出 Markdown 文件：${String(data.file_path ?? '')}`)
           } else if (event === 'done') {
             set({ streamText: '' })
           } else if (event === 'error') {

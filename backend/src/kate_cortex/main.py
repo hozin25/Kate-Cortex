@@ -59,7 +59,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.vector_index = vector_index
     app.state.projection = projection
 
-    from .routes import chat, collections, embeddings, entries, health, settings, sync
+    from .routes import chat, collections, embeddings, entries, health, mcp, settings, sync
 
     app.include_router(health.router, prefix="/api")
     app.include_router(entries.router, prefix="/api")
@@ -68,6 +68,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(chat.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
     app.include_router(embeddings.router, prefix="/api")
+    app.include_router(mcp.router, prefix="/api")
     return app
 
 

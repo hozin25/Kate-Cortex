@@ -14,6 +14,7 @@ dependencies = [
     "anthropic>=1.2.0",
     "sqlite-vec>=0.1.9",
     "scikit-learn>=1.9.0",
+    "mcp>=2.1,<3",  # v2 重命名了传输与字段（streamable_http_client / input_schema）
 ]
 
 [dependency-groups]

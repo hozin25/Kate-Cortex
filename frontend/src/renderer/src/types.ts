@@ -104,6 +104,8 @@ export interface AppSettings {
   embedding_provider: EmbeddingProviderName
   embedding_model: string
   embedding_api_key: string | null
+  mcp_url: string | null
+  export_dir: string | null
 }
 
 export interface EmbeddingStatus {

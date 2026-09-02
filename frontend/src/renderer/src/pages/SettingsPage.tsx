@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, KeyRound, Layers, Plug, Settings2 } from 'lucide-react'
+import { Eye, EyeOff, FileDown, Globe, KeyRound, Layers, Plug, Settings2 } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { useSettingsStore } from '@renderer/stores/settings'
@@ -42,6 +42,10 @@ export function SettingsPage(): React.JSX.Element {
   const [vecStatus, setVecStatus] = useState<EmbeddingStatus | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [draftEmbedKey, setDraftEmbedKey] = useState('')
+  const [draftMcpUrl, setDraftMcpUrl] = useState('')
+  const [mcpTest, setMcpTest] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testingMcp, setTestingMcp] = useState(false)
+  const [draftExportDir, setDraftExportDir] = useState('')
 
   const loadVecStatus = (): void => {
     api
@@ -57,6 +61,8 @@ export function SettingsPage(): React.JSX.Element {
         if (loaded) {
           setDraftKeys(Object.fromEntries(PROVIDERS.map((p) => [p.name, ''])))
           setDraftModel(loaded.default_model)
+          setDraftMcpUrl(loaded.mcp_url ?? '')
+          setDraftExportDir(loaded.export_dir ?? '')
         }
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : '设置加载失败'))
@@ -317,6 +323,107 @@ export function SettingsPage(): React.JSX.Element {
                 ? `已索引 ${vecStatus.indexed} / ${vecStatus.total} 条`
                 : '未启用：需先配置所选服务商的 API Key（GLM 复用上方 GLM Key，硅基流动需单独 Key）'}
           </p>
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <Globe className="size-4 text-aurora-cyan" />
+            外部工具（MCP）
+          </div>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            填入 MCP 服务的 Streamable HTTP 端点（含 Key），Kate
+            即可调用其工具获取实时数据。例如高德地图：
+            <span className="font-mono text-zinc-400">https://mcp.amap.com/mcp?key=你的Key</span>
+            （在高德开放平台创建「Web 服务」Key 后按其 MCP 文档拼接）。留空即停用。
+          </p>
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              type="password"
+              value={draftMcpUrl}
+              onChange={(e) => setDraftMcpUrl(e.target.value)}
+              placeholder={
+                settings.mcp_url ? '已保存（输入以覆盖）' : 'MCP 端点 URL（https://…?key=…）'
+              }
+              className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+            />
+            <button
+              onClick={() => {
+                void handleSave({ mcp_url: draftMcpUrl.trim() }).then(() => setMcpTest(null))
+              }}
+              disabled={draftMcpUrl.trim() === (settings.mcp_url ?? '')}
+              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+            >
+              保存
+            </button>
+            <button
+              onClick={() => {
+                setTestingMcp(true)
+                setMcpTest(null)
+                api
+                  .post<{ ok: boolean; message: string }>('/mcp/test')
+                  .then((r) => setMcpTest({ ok: r.ok, message: r.message }))
+                  .catch((err) =>
+                    setMcpTest({
+                      ok: false,
+                      message: err instanceof Error ? err.message : '网络错误'
+                    })
+                  )
+                  .finally(() => setTestingMcp(false))
+              }}
+              disabled={!settings.mcp_url || testingMcp}
+              className="flex shrink-0 items-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40"
+            >
+              <Plug className="size-3.5" />
+              测试
+            </button>
+          </div>
+          {(mcpTest || settings.mcp_url) && (
+            <p
+              className={cn(
+                'mt-2 text-xs',
+                mcpTest
+                  ? mcpTest.ok
+                    ? 'text-emerald-300/90'
+                    : 'text-rose-300/90'
+                  : 'text-zinc-500'
+              )}
+            >
+              {mcpTest
+                ? `${mcpTest.ok ? '✓' : '✕'} ${mcpTest.message}`
+                : '已配置 MCP 端点，对话涉及景点、路线、天气时会自动调用实时查询。'}
+            </p>
+          )}
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <FileDown className="size-4 text-aurora-indigo" />
+            导出文件夹
+          </div>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            对话里让 Kate「保存成文件 / 导出 md」时（如旅游行程、报告），文档会写成 独立的 Markdown
+            文件存到此文件夹。留空使用默认： 文档\Kate-Cortex 导出。
+          </p>
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              value={draftExportDir}
+              onChange={(e) => setDraftExportDir(e.target.value)}
+              placeholder={
+                settings.export_dir ? '已保存（输入以覆盖）' : '默认： 文档\\Kate-Cortex 导出'
+              }
+              className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+            />
+            <button
+              onClick={() => void handleSave({ export_dir: draftExportDir.trim() })}
+              disabled={draftExportDir.trim() === (settings.export_dir ?? '')}
+              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+            >
+              保存
+            </button>
+          </div>
+          {settings.export_dir && (
+            <p className="mt-2 break-all text-xs text-zinc-500">当前：{settings.export_dir}</p>
+          )}
         </GlassPanel>
 
         <GlassPanel className="p-5">
