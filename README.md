@@ -25,7 +25,10 @@
   [DESIGN.md §7.3](./docs/DESIGN.md)）；MCP client 已实现（2026-09-02，Streamable
   HTTP 接入外部工具服务，如高德地图 MCP——POI / 路线 / 天气实时查询，可在对话里
   做旅游行程规划并输出 Markdown，见 [DESIGN.md §6.3](./docs/DESIGN.md)）
-- v0.3：MCP server，被 Claude Code 调用，自动沉淀任务总结
+- v0.3：MCP server 已实现（2026-09-07，stdio 暴露 6 个工具——知识检索/读取/沉淀、
+  合集列表、记忆召回/保存，外部 agent 写入打 source=import 标，见
+  [DESIGN.md §15](./docs/DESIGN.md)）。Claude Code 接入：
+  `claude mcp add kate-cortex -s user -- uv run --project <backend目录> python -m kate_cortex.mcp_server`
 
 ## 技术栈
 

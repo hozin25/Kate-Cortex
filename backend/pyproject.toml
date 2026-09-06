@@ -17,6 +17,9 @@ dependencies = [
     "mcp>=2.1,<3",  # v2 重命名了传输与字段（streamable_http_client / input_schema）
 ]
 
+[project.scripts]
+kate-cortex-mcp = "kate_cortex.mcp_server:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.2",

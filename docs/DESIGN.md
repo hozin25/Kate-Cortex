@@ -699,6 +699,27 @@ MVP 合计 6~7 人天。
 
 ---
 
+## 15. MCP 服务端（2026-09-07 增补）
+
+「桌面端 + MCP 双形态」的服务端侧：外部编码 agent（Claude Code / Cursor）经
+stdio 调用 Kate-Cortex 的知识库与记忆能力。与 MCP 客户端（`mcp_client.py`，
+Kate 在对话里调高德等外部工具）方向相反——客户端是"你用别人的工具"，
+服务端是"别人用你的数据"。
+
+- **进程形态**：`uv run kate-cortex-mcp`（`mcp_server.py`，mcp SDK 2.x
+  MCPServer + stdio），与 1738 HTTP 服务并存，SQLite WAL 支持多进程同库读写；
+  不占端口、不出网
+- **工具**（6 个，全部复用现有层）：`search_knowledge`（rag.retrieve 混合检索）·
+  `get_entry`（全文+反向链接）· `save_knowledge`（source=import）·
+  `list_collections` · `recall_memory`（chat.memory.recall）·
+  `save_memory`（keywords/importance，replaces 覆盖更新）
+- **约束**：只增不改（无 update/delete 工具，append-only 与记忆机制同原则）；
+  外部写入一律 `source=import` 打标，与 manual/chat 区分可追溯
+- **接入**：`claude mcp add kate-cortex -s user -- uv run --project
+  <backend 目录> python -m kate_cortex.mcp_server`
+
+---
+
 ## 附录 A：参考项目
 
 | 项目 | 借鉴点 |

@@ -346,6 +346,33 @@ git commit -m "docs: project requirements, design and tech stack"
 
 ---
 
+## 阶段 11：MCP 服务端（2026-09-07 完成）
+
+**目标**：兑现 README「桌面端 + MCP 双形态」的服务端侧——外部编码 agent
+（Claude Code / Cursor）经 stdio 检索与沉淀用户的知识库和记忆。与阶段
+（mcp_client，Kate 用别人的工具）方向相反：别人用你的数据。
+
+| # | 任务 | 产出 |
+|---|---|---|
+| 11.1 | embedder 工厂共享化 | `make_embedder_factory` 从 main.py 移入 providers/embedding.py（main 模块级会启动 FastAPI 应用，MCP server 不能 import 它） |
+| 11.2 | `mcp_server.py` | mcp SDK 2.x `MCPServer` + stdio；6 工具：search_knowledge（复用 rag.retrieve 混合检索）/ get_entry（含反向链接）/ save_knowledge（source=import）/ list_collections / recall_memory / save_memory（含 replaces 覆盖更新）；instructions 指导 agent 何时调用 |
+| 11.3 | 入口 | `[project.scripts] kate-cortex-mcp` → `uv run kate-cortex-mcp`；与 1738 HTTP 服务并存（SQLite WAL 多进程读写） |
+| 11.4 | 测试与冒烟 | 工具纯函数单测 + 注册验证（319 过，+11）；`smoke_mcp_server.py` 真实 stdio 握手（子进程 → initialize → list_tools → search/save 调用 → 落盘校验）全通过 |
+
+**设计约束**：只增不改（不暴露 update/delete 工具，与记忆 append-only 同原则）；
+外部写入一律 `source=import` 打标；stdio 本地进程，不占端口不出网。
+
+**Claude Code 接入**：
+`claude mcp add kate-cortex -s user -- uv run --project D:\workspace\Kate-Cortex\backend python -m kate_cortex.mcp_server`
+
+**踩坑**：mcp 2.x 相对 1.x 改名三处——FastMCP→MCPServer（mcp.server.mcpserver）、
+`serverInfo`→`server_info`、`isError`→`is_error`；PowerShell Set-Content 默认
+编码会损坏 UTF-8 中文源文件（冒烟脚本被写坏一次，重写规避）。
+
+**提交点**：`feat: mcp server exposing knowledge base and memory to coding agents`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |

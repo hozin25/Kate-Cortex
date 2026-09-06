@@ -8,7 +8,7 @@ from .chat.service import ChatService
 from .config import Config, load_config
 from .db import connect as db_connect
 from .providers import ProviderFactory
-from .providers.embedding import GLMEmbedder, SiliconFlowEmbedder
+from .providers.embedding import make_embedder_factory
 from .projection import ProjectionCache
 from .search import Search
 from .settings import SettingsService
@@ -34,7 +34,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     database = db_connect(config.db_path)
     settings_service = SettingsService(database.conn)
     vector_index = (
-        VectorIndex(database.conn, _make_embedder_factory(settings_service))
+        VectorIndex(database.conn, make_embedder_factory(settings_service))
         if database.vec_enabled
         else None
     )
@@ -81,29 +81,6 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(mcp.router, prefix="/api")
     app.include_router(attachments.router, prefix="/api")
     return app
-
-
-def _make_embedder_factory(settings_service):
-    """每次调用时从 settings 解析 embedding provider（后配 key 免重启）：
-    siliconflow 用独立 embedding_api_key；glm 为空时回退复用 provider key。
-    缺 key 返回 None → 向量检索降级为纯 FTS"""
-
-    def factory() -> GLMEmbedder | SiliconFlowEmbedder | None:
-        settings = settings_service.get_all()
-        provider = settings.get("embedding_provider", "glm")
-        model = settings.get("embedding_model")
-        api_key = settings.get("embedding_api_key")
-        if provider == "siliconflow":
-            if not api_key:
-                return None
-            return SiliconFlowEmbedder(api_key=api_key, model=model)
-        if not api_key:
-            api_key = settings.get("provider_keys", {}).get("glm")
-        if not api_key:
-            return None
-        return GLMEmbedder(api_key=api_key, model=model)
-
-    return factory
 
 
 def _run_startup_migrations(database, storage) -> None:

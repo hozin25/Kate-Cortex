@@ -25,6 +25,29 @@ class EmbeddingUnavailable(Exception):
     """embedding 客户端不可用（未配 key 等）——调用方据此降级，非错误"""
 
 
+def make_embedder_factory(settings_service):
+    """每次调用时从 settings 解析 embedding provider（后配 key 免重启）：
+    siliconflow 用独立 embedding_api_key；glm 为空时回退复用 provider key。
+    缺 key 返回 None → 向量检索降级为纯 FTS。main（HTTP）与 mcp_server 共用"""
+
+    def factory() -> "GLMEmbedder | SiliconFlowEmbedder | None":
+        settings = settings_service.get_all()
+        provider = settings.get("embedding_provider", "glm")
+        model = settings.get("embedding_model")
+        api_key = settings.get("embedding_api_key")
+        if provider == "siliconflow":
+            if not api_key:
+                return None
+            return SiliconFlowEmbedder(api_key=api_key, model=model)
+        if not api_key:
+            api_key = settings.get("provider_keys", {}).get("glm")
+        if not api_key:
+            return None
+        return GLMEmbedder(api_key=api_key, model=model)
+
+    return factory
+
+
 class _OpenAICompatEmbedder:
     name = ""
     base_url = ""
