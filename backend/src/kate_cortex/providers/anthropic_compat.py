@@ -8,11 +8,14 @@ StreamEvent 管线，agent loop 无感知。
 """
 
 import json
+import re
 from typing import Iterator
 
 import anthropic
 
 from .base import BaseProvider, Done, StreamEvent, TextDelta, ToolCallDelta
+
+_DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.+)$", re.DOTALL)
 
 # Anthropic stop_reason → OpenAI finish_reason
 _STOP_REASONS = {
@@ -29,6 +32,7 @@ def to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
     - tool 角色 → user 角色的 tool_result 内容块
     - 相邻同角色消息合并为一条（多个 tool 结果、工具结果后紧跟用户追问）
     - 空 assistant 消息丢弃（无 text 且无 tool_calls 时不产生空块）
+    - user content 为多模态分块列表时逐块转换（text / image_url data URL）
     """
     system_parts: list[str] = []
     converted: list[dict] = []
@@ -39,7 +43,12 @@ def to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
             if content:
                 system_parts.append(content)
         elif role == "user":
-            converted.append({"role": "user", "content": [{"type": "text", "text": content}]})
+            if isinstance(content, list):
+                converted.append(
+                    {"role": "user", "content": _anthropic_user_blocks(content)}
+                )
+            else:
+                converted.append({"role": "user", "content": [{"type": "text", "text": content}]})
         elif role == "assistant":
             blocks: list[dict] = []
             if content:
@@ -81,6 +90,40 @@ def to_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
         else:
             merged.append(msg)
     return "\n\n".join(system_parts), merged
+
+
+def _anthropic_user_blocks(parts: list[dict]) -> list[dict]:
+    """OpenAI 多模态分块 → Anthropic 内容块。image_url 仅支持 data URL
+    （附件均由本地读回，无外链场景）；无法解析的块跳过不中断"""
+    blocks: list[dict] = []
+    for part in parts:
+        ptype = part.get("type")
+        if ptype == "text":
+            blocks.append({"type": "text", "text": part.get("text", "")})
+        elif ptype == "image_url":
+            url = (part.get("image_url") or {}).get("url", "")
+            block = _data_url_to_image_block(url)
+            if block is not None:
+                blocks.append(block)
+    return blocks or [{"type": "text", "text": ""}]
+
+
+def _data_url_to_image_block(url: str) -> dict | None:
+    match = _DATA_URL_RE.match(url.strip())
+    if match is None:
+        return None
+    media_type = match.group(1).lower()
+    if media_type == "image/jpg":
+        media_type = "image/jpeg"
+    # SDK 只要求字符串，无需在此真正解码
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": media_type,
+            "data": match.group(2),
+        },
+    }
 
 
 def to_anthropic_tools(tools: list[dict]) -> list[dict]:

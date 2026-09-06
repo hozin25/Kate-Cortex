@@ -11,6 +11,8 @@ interface MessageBubbleProps {
 
 export function MessageBubble({ message }: MessageBubbleProps): React.JSX.Element {
   if (message.role === 'user') {
+    // 含图片引用（附件路径或乐观渲染的 data URL）时走 markdown 渲染，纯文本保持原样
+    const hasImages = /!\[[^\]]*\]\((attachments\/|data:)/.test(message.content)
     return (
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -19,7 +21,11 @@ export function MessageBubble({ message }: MessageBubbleProps): React.JSX.Elemen
         className="flex justify-end"
       >
         <div className="max-w-[80%] rounded-2xl rounded-br-md border border-aurora-indigo/25 bg-aurora-indigo/15 px-4 py-2.5 text-sm leading-7 text-zinc-100">
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          {hasImages ? (
+            <MarkdownView content={message.content} />
+          ) : (
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          )}
         </div>
       </motion.div>
     )

@@ -3,13 +3,20 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from ..attachments import (
+    AttachmentError,
+    image_refs,
+    save_data_urls,
+    strip_images,
+    to_data_url,
+)
 from ..chat.agent import run_agent_chat, sse as sse_event
 from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..mcp_client import list_mcp_tools
 from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
-from ..providers import DEFAULT_MODELS
+from ..providers import DEFAULT_MODELS, vision_supported
 from ..providers.base import ProviderError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -75,6 +82,8 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     session = chat_service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
+    if not payload.content.strip() and not payload.images:
+        raise HTTPException(status_code=422, detail="消息内容不能为空")
 
     settings = request.app.state.settings_service.get_all()
     rag_enabled = (
@@ -84,9 +93,29 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     mcp_url = (settings.get("mcp_url") or "").strip()
     export_dir = (settings.get("export_dir") or "").strip() or None
 
-    chat_service.append_message(session_id, "user", payload.content)
-    chat_service.ensure_title(session_id, payload.content)
-    history = _history_messages(chat_service, session_id)
+    # 多模态：图片落盘 vault/attachments/，content 以 markdown 引用携带（本地可追溯）
+    content = payload.content
+    if payload.images:
+        if not vision_supported(session.provider, session.model):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"当前模型 {session.provider}/{session.model} 不支持图片，"
+                    "请切换到 GLM 编程套餐（glm-5.3）或 GLM-4V 系列模型"
+                ),
+            )
+        try:
+            rels = save_data_urls(request.app.state.storage.vault, payload.images)
+        except AttachmentError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in rels)
+
+    vision = vision_supported(session.provider, session.model)
+    chat_service.append_message(session_id, "user", content)
+    chat_service.ensure_title(session_id, strip_images(content))
+    history = _history_messages(
+        chat_service, session_id, request.app.state.storage.vault, vision
+    )
 
     def generate():
         try:
@@ -98,7 +127,9 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             return
 
         snippets = (
-            retrieve(request.app.state.storage, payload.content) if rag_enabled else []
+            retrieve(request.app.state.storage, strip_images(content))
+            if rag_enabled
+            else []
         )
         profile = user_profile(request.app.state.storage)
         memories = (
@@ -148,11 +179,30 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     return StreamingResponse(generate(), media_type="text/event-stream")
 
 
-def _history_messages(chat_service, session_id: str) -> list[dict]:
+def _history_messages(
+    chat_service, session_id: str, vault=None, vision: bool = False
+) -> list[dict]:
+    """历史 → LLM 消息。含图片引用的 user 消息在视觉模型下展开为
+    OpenAI 多模态分块（image_url data URL），否则降级为 [图片] 占位文本"""
     messages = [
         m
         for m in chat_service.list_messages(session_id)
         if m.role in ("user", "assistant")
     ]
     recent = messages[-(HISTORY_ROUNDS * 2) :]
-    return [{"role": m.role, "content": m.content} for m in recent]
+    result: list[dict] = []
+    for m in recent:
+        refs = image_refs(m.content)
+        if m.role == "user" and refs and vision and vault is not None:
+            parts: list[dict] = [{"type": "text", "text": strip_images(m.content)}]
+            for rel in refs:
+                try:
+                    parts.append(
+                        {"type": "image_url", "image_url": {"url": to_data_url(vault, rel)}}
+                    )
+                except OSError:
+                    continue  # 附件文件缺失时跳过，不中断对话
+            result.append({"role": "user", "content": parts})
+        else:
+            result.append({"role": m.role, "content": strip_images(m.content)})
+    return result

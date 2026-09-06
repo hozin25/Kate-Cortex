@@ -140,7 +140,7 @@ export function ChatPage(): React.JSX.Element {
       <div className="px-6 pb-4 pt-2">
         <ChatInput
           streaming={streaming}
-          onSend={(c) => void store.sendMessage(c)}
+          onSend={(c, imgs) => void store.sendMessage(c, imgs)}
           onStop={store.stopStreaming}
         />
       </div>

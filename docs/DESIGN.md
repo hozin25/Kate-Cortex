@@ -299,11 +299,20 @@ GET    /api/health                      {app: "kate-cortex", version}
 # 向量索引（v5，§7.2）
 GET    /api/embeddings/status           {available, indexed, total}
 POST   /api/embeddings/rebuild          清空向量表 + 全量重嵌
+
+# 附件（多模态输入，2026-09-06 增补）
+GET    /api/attachments/{rel_path}      图片静态服务（vault/attachments 下，防目录穿越）
 ```
 
 ### 4.2 SSE 事件协议（`POST /api/chat/sessions/:id/chat`）
 
-请求：`{"content": "用户消息", "rag_enabled": true}`，响应 `text/event-stream`：
+请求：`{"content": "用户消息", "images": ["data:image/png;base64,…"], "rag_enabled": true}`，
+响应 `text/event-stream`。**多模态**（2026-09-06 增补）：`images` 可选（≤4 张，各 ≤5MB，
+png/jpeg/webp/gif），落盘 `vault/attachments/YYYY/MM/`，消息 content 以 markdown 图片
+引用携带（本地可追溯）；视觉模型（glm-coding 的 glm-5.3 原生多模态；glm 经典端点
+按模型名 glm-4v/glm-4.5v 判断）下发时展开为多模态分块（OpenAI image_url /
+Anthropic image block，由 anthropic_compat 归一化），文本模型发图 400 引导切换，
+历史回放时非视觉模型降级为「[图片]」占位：
 
 | event | data | 说明 |
 |---|---|---|
@@ -331,16 +340,25 @@ POST   /api/embeddings/rebuild          清空向量表 + 全量重嵌
 
 ```
 providers/
-  base.py      # Provider 抽象：chat_stream(messages, tools) -> AsyncIterator[StreamEvent]
-  deepseek.py  # base_url = https://api.deepseek.com/v1
-  glm.py       # base_url = https://open.bigmodel.cn/api/paas/v4
+  base.py         # Provider 抽象：chat_stream(messages, tools) -> AsyncIterator[StreamEvent]
+  openai_compat.py # 公共实现；_request_kwargs() 钩子供子类注入私有参数
+  deepseek.py     # base_url = https://api.deepseek.com/v1（付费）
+  glm.py          # base_url = https://open.bigmodel.cn/api/paas/v4，免费档 glm-4.7-flash
+  glm_coding.py   # Anthropic 协议端点（编程套餐）
+  siliconflow.py  # base_url = https://api.siliconflow.cn/v1，免费档 Qwen/Qwen3-8B；
+                  #   混合推理 Qwen3 显式 enable_thinking=False，防思考文本污染流
+  modelscope.py   # base_url = https://api-inference.modelscope.cn/v1，每日 2000 次免费
 ```
 
-- 统一用 **openai SDK**，`OpenAI(base_url=..., api_key=...)` 切换两家
-- `StreamEvent` 归一化两类事件：`TextDelta` / `ToolCallDelta`——**屏蔽两家在流式
+- 统一用 **openai SDK**，`OpenAI(base_url=..., api_key=...)` 切换各家
+- `StreamEvent` 归一化两类事件：`TextDelta` / `ToolCallDelta`——**屏蔽各家在流式
   tool_calls 增量拼接上的格式差异**（这是已知的实现坑，Provider 层集中处理并配集成测试）
 - API key 从 settings 读取；缺 key 时创建会话即报错（fail fast）
 - embedding（v0.2）：GLM embedding-3 或硅基流动，接口在 base.py 预留
+- **免费组合**（2026-09-06 接入，真 API 冒烟通过）：对话 glm-4.7-flash（智谱完全
+  免费，30B MoE / 200K 上下文 / 原生 function calling）或 Qwen/Qwen3-8B（硅基流动
+  免费档）；更重的任务走魔搭 Qwen3-235B-A22B-Instruct-2507（每日 2000 次免费）；
+  向量检索硅基流动 bge-m3（免费）。默认 provider 全新安装指向 glm 免费档
 
 ---
 

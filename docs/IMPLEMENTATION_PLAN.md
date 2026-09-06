@@ -271,6 +271,32 @@ git commit -m "docs: project requirements, design and tech stack"
 
 ---
 
+## 阶段 8：多模态图片输入（2026-09-06 完成）
+
+**目标**：对话可直接粘贴/拖入/选择图片提问（报错截图问答），附件本地落盘可追溯。
+
+| # | 任务 | 产出 | 依赖 |
+|---|---|---|---|
+| 8.1 | `attachments.py` | data URL 落盘 `vault/attachments/YYYY/MM/`（≤4 张/条、各 ≤5MB、png/jpeg/webp/gif）、markdown 引用解析/剥离/读回 | — |
+| 8.2 | 多模态消息流 | `ChatRequest.images`；chat 路由落盘+嵌 markdown 引用；历史回放按模型展开为多模态分块（OpenAI image_url），非视觉模型降级「[图片]」占位 | 8.1 |
+| 8.3 | Provider 层 | `vision_supported()`（glm-coding 全支持、deepseek 不支持、其余按模型名 v 段判断）；anthropic_compat 把 image_url data URL 转 Anthropic image block | 8.2 |
+| 8.4 | 附件静态服务 | `GET /api/attachments/{path}`（resolve 后必须仍在 attachments 目录内，防穿越） | 8.1 |
+| 8.5 | 前端 | ChatInput 粘贴/拖拽/选图 + 缩略图（乐观渲染 data URL）；MessageBubble 含图消息走 markdown；MarkdownView 把 attachments/ 引用指向本地后端 | 8.4 |
+
+**执行记录（2026-09-06 完成阶段 8）**：
+- 后端 295 测试通过（+19：落盘校验/引用解析/视觉判定/anthropic 转换/多模态
+  全链路/静态服务防穿越）；前端 typecheck / ESLint / Vitest（17）全绿
+- 偏差：用户主路径是 glm-coding（唯一有余额且 glm-5.3 原生多模态）——
+  Anthropic 协议的 image block 转换是该功能的关键路径，配了独立单测
+- 决策：图片以 markdown 引用嵌入消息 content（SQLite 零迁移、UI 天然渲染、
+  本地可追溯）；RAG 检索与标题生成用剥离图片后的纯文本
+- 已知边界：暂无图片压缩（5MB 内原图直发）；历史含图消息在每轮都会重发图片
+  token（与主流客户端一致，HISTORY_ROUNDS=20 轮截断兜底）
+
+**提交点**：`feat: multimodal image input for chat`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |

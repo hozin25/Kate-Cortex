@@ -33,7 +33,7 @@ interface ChatState {
   createSession: (provider: ProviderName) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
   removeSession: (id: string) => Promise<void>
-  sendMessage: (content: string) => Promise<void>
+  sendMessage: (content: string, images?: string[]) => Promise<void>
   stopStreaming: () => void
   dismissSuggest: (index: number) => void
   undoMemory: (entryId: string) => Promise<void>
@@ -121,14 +121,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, images = []) => {
     const { currentId, streaming } = get()
     if (!currentId || streaming) return
+    // 乐观渲染：本地先用 data URL 直出图片，SSE 完成后以服务端消息（附件路径）替换
+    const imageMd = images.map((url) => `![图片](${url})`).join('\n')
     const userMsg: ChatMessage = {
       id: `local_${Date.now()}`,
       conversation_id: currentId,
       role: 'user',
-      content,
+      content: imageMd ? `${content}\n\n${imageMd}` : content,
       tool_calls: null,
       knowledge_refs: null,
       created_at: new Date().toISOString()
@@ -147,7 +149,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     await postSse(
       `/chat/sessions/${currentId}/chat`,
-      { content, rag_enabled: get().ragEnabled },
+      { content, rag_enabled: get().ragEnabled, images },
       {
         onEvent: (event, data) => {
           const s = get()

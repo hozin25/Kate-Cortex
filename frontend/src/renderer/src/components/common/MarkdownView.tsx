@@ -100,6 +100,21 @@ export const MarkdownView = memo(function MarkdownView({ content, className }: M
                 {children}
               </a>
             )
+          },
+          img({ src, alt }) {
+            // 附件引用是 vault 相对路径，指向本地后端静态服务；data URL（乐观渲染）直通
+            const url =
+              typeof src === 'string' && src.startsWith('attachments/')
+                ? `http://127.0.0.1:1738/api/${src}`
+                : src
+            return (
+              <img
+                src={url}
+                alt={alt ?? ''}
+                loading="lazy"
+                className="my-1 max-h-80 max-w-full rounded-xl border border-white/10"
+              />
+            )
           }
         }}
       >
