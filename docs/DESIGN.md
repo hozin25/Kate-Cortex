@@ -277,6 +277,8 @@ GET    /api/collections                 [{name, count}]
 POST   /api/collections                 {name}，重名 409
 PUT    /api/collections/:name           {name} 重命名（重写成员 frontmatter）
 DELETE /api/collections/:name           删除合集，成员条目保留
+# ↑ 「记忆」「个人信息」为系统合集（自动记忆/档案注入的识别标志），
+#   删除与重命名均 409 拒绝，防止对应机制对存量条目静默失效；创建不受限
 
 # 对话
 POST   /api/chat/sessions               {provider, model, title?}
@@ -285,6 +287,13 @@ PATCH  /api/chat/sessions/:id           重命名
 DELETE /api/chat/sessions/:id
 GET    /api/chat/sessions/:id/messages  历史
 POST   /api/chat/sessions/:id/chat      发消息 → SSE 流式响应
+
+# 对话管理（2026-09-06 增补）
+POST   /api/chat/sessions/:id/regenerate                    重新生成：删最后
+                                                             条用户消息后的回复并重流（不重复落用户消息）
+POST   /api/chat/sessions/:id/messages/:mid/resend          编辑用户消息并重发：
+                                                             {content, keep_images=true} 原地更新+截断其后+重流
+DELETE /api/chat/sessions/:id/messages/:mid                 删除单条消息（校验会话归属）
 
 # 设置
 GET    /api/settings
@@ -560,6 +569,9 @@ frontend/src/
   pages/
     ChatPage.tsx          # 默认页：左会话列表 + 主对话区
     LibraryPage.tsx       # 知识库：列表/立体双 tab（立体 = 语义空间三维点云，§7.3）
+    MemoriesPage.tsx      # 记忆管理（2026-09-06 增补）：「记忆」合集集中管理——
+                          # 重要度排序 + 关键词搜索 + 展开编辑（标题/内容/关键词/
+                          # 重要度，复用 PUT /entries）+ 删除；对标 ChatGPT Memory
     EntryDetailPage.tsx   # 详情 + 元数据 + 反向链接 + 来源徽标(source=chat 可跳回会话)
     EntryEditPage.tsx     # 表单 + CodeMirror
     SettingsPage.tsx      # Provider/key/模型/RAG 默认/vault 路径/连通测试
@@ -575,7 +587,7 @@ frontend/src/
 
 ### 8.2 布局与视觉
 
-- 左侧栏：导航（对话/知识库/设置）+ 会话列表/条目列表，`backdrop-blur` 毛玻璃
+- 左侧栏：导航（对话/知识库/记忆/设置）+ 会话列表/条目列表，`backdrop-blur` 毛玻璃
 - 主区：对话气泡大圆角、渐变边框；AI 回答区 `react-markdown` + shiki 深色主题
 - 动效（motion）：消息淡入上浮、流式光标、卡片悬浮位移
 - 默认暗色玻璃拟态，CSS variables + `.dark` 切换支持明暗，详见 TECH_STACK.md §4

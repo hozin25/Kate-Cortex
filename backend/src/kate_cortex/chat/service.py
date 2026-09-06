@@ -14,6 +14,10 @@ class SessionNotFound(Exception):
     pass
 
 
+class MessageNotFound(Exception):
+    pass
+
+
 @dataclass
 class Session:
     id: str
@@ -110,6 +114,55 @@ class ChatService:
             (session_id,),
         ).fetchall()
         return [self._to_message(row) for row in rows]
+
+    def get_message(self, message_id: str) -> Message | None:
+        row = self.conn.execute(
+            "SELECT * FROM messages WHERE id = ?", (message_id,)
+        ).fetchone()
+        return self._to_message(row) if row else None
+
+    def last_message_of_role(self, session_id: str, role: str) -> Message | None:
+        row = self.conn.execute(
+            "SELECT * FROM messages WHERE conversation_id = ? AND role = ?"
+            " ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            (session_id, role),
+        ).fetchone()
+        return self._to_message(row) if row else None
+
+    def update_message(self, message_id: str, content: str) -> Message:
+        message = self.get_message(message_id)
+        if message is None:
+            raise MessageNotFound(message_id)
+        with self.conn:
+            self.conn.execute(
+                "UPDATE messages SET content = ? WHERE id = ?", (content, message_id)
+            )
+        updated = self.get_message(message_id)
+        assert updated is not None
+        return updated
+
+    def delete_message(self, message_id: str) -> None:
+        if self.get_message(message_id) is None:
+            raise MessageNotFound(message_id)
+        with self.conn:
+            self.conn.execute("DELETE FROM messages WHERE id = ?", (message_id,))
+
+    def delete_messages_after(self, session_id: str, message_id: str) -> int:
+        """删除该消息之后的所有消息（严格之后，不含自身）。排序键与
+        list_messages 一致（created_at, rowid），返回删除条数"""
+        row = self.conn.execute(
+            "SELECT conversation_id, created_at, rowid FROM messages WHERE id = ?",
+            (message_id,),
+        ).fetchone()
+        if row is None or row["conversation_id"] != session_id:
+            raise MessageNotFound(message_id)
+        with self.conn:
+            cursor = self.conn.execute(
+                "DELETE FROM messages WHERE conversation_id = ?"
+                " AND (created_at > ? OR (created_at = ? AND rowid > ?))",
+                (session_id, row["created_at"], row["created_at"], row["rowid"]),
+            )
+            return cursor.rowcount
 
     def append_message(
         self,

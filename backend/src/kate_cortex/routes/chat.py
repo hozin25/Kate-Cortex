@@ -15,7 +15,15 @@ from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..mcp_client import list_mcp_tools
-from ..models import ChatRequest, MessageOut, SessionCreate, SessionOut, SessionRename
+from ..models import (
+    ChatRegenerate,
+    ChatRequest,
+    ChatResend,
+    MessageOut,
+    SessionCreate,
+    SessionOut,
+    SessionRename,
+)
 from ..providers import DEFAULT_MODELS, vision_supported
 from ..providers.base import ProviderError
 
@@ -117,6 +125,131 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         chat_service, session_id, request.app.state.storage.vault, vision
     )
 
+    return StreamingResponse(
+        _stream_response(
+            request,
+            session,
+            history,
+            rag_content=content,
+            rag_enabled=rag_enabled,
+            memory_enabled=memory_enabled,
+            mcp_url=mcp_url,
+            export_dir=export_dir,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/sessions/{session_id}/regenerate")
+def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
+    """重新生成：删除最后一条用户消息之后的回复，重新流式生成（不重复落用户消息）"""
+    chat_service = request.app.state.chat_service
+    session = chat_service.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    last_user = chat_service.last_message_of_role(session_id, "user")
+    if last_user is None:
+        raise HTTPException(status_code=404, detail="没有可重新生成的消息")
+
+    settings = request.app.state.settings_service.get_all()
+    chat_service.delete_messages_after(session_id, last_user.id)
+    history = _history_messages(
+        chat_service,
+        session_id,
+        request.app.state.storage.vault,
+        vision_supported(session.provider, session.model),
+    )
+    return StreamingResponse(
+        _stream_response(
+            request,
+            session,
+            history,
+            rag_content=last_user.content,
+            rag_enabled=(
+                payload.rag_enabled
+                if payload.rag_enabled is not None
+                else settings["rag_default"]
+            ),
+            memory_enabled=settings.get("memory_enabled", True),
+            mcp_url=(settings.get("mcp_url") or "").strip(),
+            export_dir=(settings.get("export_dir") or "").strip() or None,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.post("/sessions/{session_id}/messages/{message_id}/resend")
+def resend(session_id: str, message_id: str, payload: ChatResend, request: Request):
+    """编辑用户消息并重发：原地更新内容，删除其后所有消息，重新流式生成"""
+    chat_service = request.app.state.chat_service
+    message = chat_service.get_message(message_id)
+    if message is None or message.conversation_id != session_id:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    if message.role != "user":
+        raise HTTPException(status_code=400, detail="仅支持编辑用户消息")
+    session = chat_service.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="会话不存在")
+
+    content = payload.content
+    if payload.keep_images:
+        refs = image_refs(message.content)
+        if refs:
+            content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in refs)
+
+    settings = request.app.state.settings_service.get_all()
+    chat_service.update_message(message_id, content)
+    chat_service.delete_messages_after(session_id, message_id)
+    history = _history_messages(
+        chat_service,
+        session_id,
+        request.app.state.storage.vault,
+        vision_supported(session.provider, session.model),
+    )
+    return StreamingResponse(
+        _stream_response(
+            request,
+            session,
+            history,
+            rag_content=content,
+            rag_enabled=(
+                payload.rag_enabled
+                if payload.rag_enabled is not None
+                else settings["rag_default"]
+            ),
+            memory_enabled=settings.get("memory_enabled", True),
+            mcp_url=(settings.get("mcp_url") or "").strip(),
+            export_dir=(settings.get("export_dir") or "").strip() or None,
+        ),
+        media_type="text/event-stream",
+    )
+
+
+@router.delete("/sessions/{session_id}/messages/{message_id}", status_code=204)
+def delete_message(session_id: str, message_id: str, request: Request):
+    chat_service = request.app.state.chat_service
+    message = chat_service.get_message(message_id)
+    if message is None or message.conversation_id != session_id:
+        raise HTTPException(status_code=404, detail="消息不存在")
+    chat_service.delete_message(message_id)
+
+
+def _stream_response(
+    request: Request,
+    session,
+    history: list[dict],
+    *,
+    rag_content: str,
+    rag_enabled: bool,
+    memory_enabled: bool,
+    mcp_url: str,
+    export_dir: str | None,
+):
+    """chat / regenerate / resend 共用的 SSE 生成器：RAG 检索 → citations →
+    agent loop（结束后由 run_agent_chat 落库 assistant 消息）"""
+    chat_service = request.app.state.chat_service
+    session_id = session.id
+
     def generate():
         try:
             provider = request.app.state.provider_factory(
@@ -127,7 +260,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             return
 
         snippets = (
-            retrieve(request.app.state.storage, strip_images(content))
+            retrieve(request.app.state.storage, strip_images(rag_content))
             if rag_enabled
             else []
         )
@@ -176,7 +309,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             export_dir=export_dir,
         )
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return generate()
 
 
 def _history_messages(

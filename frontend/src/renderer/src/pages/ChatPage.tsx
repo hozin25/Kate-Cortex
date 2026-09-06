@@ -74,8 +74,16 @@ export function ChatPage(): React.JSX.Element {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 py-4">
-          {messages.map((m) => (
-            <MessageBubble key={m.id} message={m} />
+          {messages.map((m, i) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              isLast={i === messages.length - 1}
+              streaming={streaming}
+              onRegenerate={() => void store.regenerate()}
+              onEdit={(content) => void store.editMessage(m.id, content)}
+              onDelete={() => void store.deleteMessage(m.id)}
+            />
           ))}
 
           {streaming && <StreamingBubble text={streamText} />}

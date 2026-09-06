@@ -297,6 +297,55 @@ git commit -m "docs: project requirements, design and tech stack"
 
 ---
 
+## 阶段 9：记忆管理页（2026-09-06 完成）
+
+**目标**：对标 ChatGPT Memory 的管理入口——事后集中查看/编辑/删除全部自动记忆，
+不再只能靠对话中的撤销卡片或翻 Library。
+
+**执行记录**：
+- 纯前端工作，**后端零改动**：复用 `GET /entries?collection=记忆`（summary 已含
+  keywords/importance）、`PUT /entries/:id`（keywords/importance 可编辑）、
+  `DELETE /entries/:id`（软删）
+- 新增 `MemoriesPage`：与常驻注入同序（importance, created_at 降序）排列、
+  关键词 chips + 重要度星标、点击展开内容（按需拉详情，避免 N+1）、行内编辑
+  （标题/内容/场景关键词/重要度）、确认删除（提示 .trash 保留）、标题/关键词搜索、
+  空状态引导；侧边栏新增「记忆」导航
+- `EntrySummary` 前端类型补齐 keywords/importance（后端早已返回）
+- Vitest 5 用例（排序/空态/搜索/编辑保存/删除）；typecheck / ESLint 全绿
+- 已知取舍：关键词输入为逗号分隔文本（不做逐 chip 编辑），个人规模够用
+- 增补（同日）：系统合集防护——「记忆」「个人信息」的删除/重命名在 storage 层抛
+  `ProtectedCollection` → API 409（创建不受限，save_memory 依赖自动建合集）；
+  前端复用既有错误 toast 零改动。测试 300 通过（+5）。动因：合集级删除会让
+  记忆/档案机制对存量条目静默失效（条目还在但按合集名过滤全查不到）
+
+**提交点**：`feat: memory management page`
+
+---
+
+## 阶段 10：对话管理基本操作（2026-09-06 完成）
+
+**目标**：对话消息可管理——重新生成最后回复、编辑用户消息并重发（截断后续）、
+删除单条消息、复制消息。
+
+**执行记录**：
+- 后端：ChatService 增消息级操作（get/update/delete + `delete_messages_after`
+  按 (created_at, rowid) 与 list 同序截断）；chat 路由抽出 `_stream_response`
+  共用 SSE 生成器（chat/regenerate/resend 三入口同一条 RAG→citations→agent
+  链路）；新增 `POST /:id/regenerate`、`POST /:id/messages/:mid/resend`
+  （keep_images 保留原图片引用）、`DELETE /:id/messages/:mid`（会话归属校验）
+- 前端：store 抽 `runStream` 复用并新增 regenerate/editMessage/deleteMessage
+  （乐观截断/更新，done 后整表刷新校正）；气泡悬停操作栏（复制/编辑/删除，
+  最后一条 AI 回复另有重新生成）；用户消息内联编辑器（Ctrl+Enter 重发、
+  Esc 取消，编辑框剥离图片引用、重发时后端保留）
+- 测试：后端 308（+8：重生成替换旧回复/仅去尾回复/无消息 404/编辑重发
+  截断/拒编 assistant/404/删除/跨会话 404）；前端 25（+3）
+- 插曲：跑测试时发现 C 盘满（剩 0.3GB）导致临时文件写入失败，清理本会话
+  产生的 pytest/kate 临时目录后恢复（仅释放 0.7GB，深层清理待用户决定）
+
+**提交点**：`feat: chat message management (regenerate, edit-resend, delete)`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |

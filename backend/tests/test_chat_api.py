@@ -69,6 +69,150 @@ class TestSessionApi:
         assert client.get("/api/chat/sessions/kc_conv_none/messages").status_code == 404
 
 
+class TestChatManagement:
+    """对话管理基本操作：重新生成 / 编辑重发 / 删除消息"""
+
+    def start_session(self, client) -> dict:
+        return client.post(
+            "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}
+        ).json()
+
+    def send(self, client, session_id, content):
+        return client.post(
+            f"/api/chat/sessions/{session_id}/chat",
+            json={"content": content, "rag_enabled": False},
+        )
+
+    def messages_of(self, client, session_id):
+        return client.get(f"/api/chat/sessions/{session_id}/messages").json()
+
+    def test_regenerate_replaces_last_reply(self, client):
+        session = self.start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                [TextDelta("第一版回复"), Done("stop")],
+                [TextDelta("第二版回复"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model: fake
+
+        self.send(client, session["id"], "你好")
+        resp = client.post(f"/api/chat/sessions/{session['id']}/regenerate", json={})
+
+        assert resp.status_code == 200
+        events = parse_sse(resp.text)
+        assert [name for name, _ in events][-1] == "done"
+        messages = self.messages_of(client, session["id"])
+        # 用户消息不重复，旧回复被替换
+        assert [(m["role"], m["content"]) for m in messages] == [
+            ("user", "你好"),
+            ("assistant", "第二版回复"),
+        ]
+
+    def test_regenerate_removes_only_trailing_replies(self, client):
+        session = self.start_session(client)
+        fake = FakeProvider(script=[TextDelta("回复"), Done("stop")])
+        client.app.state.provider_factory = lambda name, model: fake
+        self.send(client, session["id"], "第一问")
+        self.send(client, session["id"], "第二问")
+
+        resp = client.post(f"/api/chat/sessions/{session['id']}/regenerate", json={})
+
+        assert resp.status_code == 200
+        roles = [(m["role"], m["content"]) for m in self.messages_of(client, session["id"])]
+        assert roles == [
+            ("user", "第一问"),
+            ("assistant", "回复"),
+            ("user", "第二问"),
+            ("assistant", "回复"),  # 重新生成的新回复
+        ]
+
+    def test_regenerate_without_user_message_404(self, client):
+        session = self.start_session(client)
+        assert (
+            client.post(f"/api/chat/sessions/{session['id']}/regenerate", json={}).status_code
+            == 404
+        )
+
+    def test_resend_updates_content_and_truncates(self, client):
+        session = self.start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                [TextDelta("答A"), Done("stop")],
+                [TextDelta("答B"), Done("stop")],
+                [TextDelta("答C"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model: fake
+        self.send(client, session["id"], "第一问")
+        self.send(client, session["id"], "第二问")
+        first_user_id = self.messages_of(client, session["id"])[0]["id"]
+
+        resp = client.post(
+            f"/api/chat/sessions/{session['id']}/messages/{first_user_id}/resend",
+            json={"content": "改后的问题"},
+        )
+
+        assert resp.status_code == 200
+        assert parse_sse(resp.text)[-1][0] == "done"
+        messages = self.messages_of(client, session["id"])
+        # 原消息原地更新，其后全部截断，新回复基于新内容
+        assert [(m["role"], m["content"]) for m in messages] == [
+            ("user", "改后的问题"),
+            ("assistant", "答C"),
+        ]
+
+    def test_resend_rejects_assistant_message(self, client):
+        session = self.start_session(client)
+        fake = FakeProvider(script=[TextDelta("答"), Done("stop")])
+        client.app.state.provider_factory = lambda name, model: fake
+        self.send(client, session["id"], "你好")
+        assistant_id = self.messages_of(client, session["id"])[1]["id"]
+
+        resp = client.post(
+            f"/api/chat/sessions/{session['id']}/messages/{assistant_id}/resend",
+            json={"content": "改"},
+        )
+
+        assert resp.status_code == 400
+
+    def test_resend_missing_message_404(self, client):
+        session = self.start_session(client)
+        assert (
+            client.post(
+                f"/api/chat/sessions/{session['id']}/messages/nope/resend",
+                json={"content": "x"},
+            ).status_code
+            == 404
+        )
+
+    def test_delete_message(self, client):
+        session = self.start_session(client)
+        fake = FakeProvider(script=[TextDelta("答"), Done("stop")])
+        client.app.state.provider_factory = lambda name, model: fake
+        self.send(client, session["id"], "你好")
+        messages = self.messages_of(client, session["id"])
+
+        resp = client.delete(f"/api/chat/sessions/{session['id']}/messages/{messages[1]['id']}")
+
+        assert resp.status_code == 204
+        remaining = self.messages_of(client, session["id"])
+        assert [m["role"] for m in remaining] == ["user"]
+
+    def test_delete_message_of_other_session_404(self, client):
+        session_a = self.start_session(client)
+        session_b = self.start_session(client)
+        fake = FakeProvider(script=[TextDelta("答"), Done("stop")])
+        client.app.state.provider_factory = lambda name, model: fake
+        self.send(client, session_a["id"], "你好")
+        message_id = self.messages_of(client, session_a["id"])[0]["id"]
+
+        # 用 B 会话的路径删 A 会话的消息 → 404（会话归属校验）
+        resp = client.delete(f"/api/chat/sessions/{session_b['id']}/messages/{message_id}")
+
+        assert resp.status_code == 404
+
+
 class TestSseChat:
     def test_full_stream_flow(self, client, env):
         session = client.post(

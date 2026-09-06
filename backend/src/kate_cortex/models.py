@@ -125,6 +125,18 @@ class ChatRequest(BaseModel):
     rag_enabled: bool | None = None
 
 
+class ChatRegenerate(BaseModel):
+    rag_enabled: bool | None = None
+
+
+class ChatResend(BaseModel):
+    """编辑用户消息并重发：content 为新文本；keep_images=True 时保留原消息的图片引用"""
+
+    content: str = Field(min_length=1)
+    rag_enabled: bool | None = None
+    keep_images: bool = True
+
+
 class SettingsUpdate(BaseModel):
     provider_keys: dict[str, str] | None = None
     default_provider: ProviderName | None = None

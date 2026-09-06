@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
 import type { ChatMessage } from '@renderer/types'
@@ -69,5 +70,62 @@ describe('MessageBubble 用户消息图片', () => {
     expect(p).not.toBeNull()
     expect(p?.textContent).toContain('普通文本')
     expect(p?.textContent).toContain('多行')
+  })
+})
+
+describe('MessageBubble 对话管理操作', () => {
+  function assistantMessage(id = 'a1'): ChatMessage {
+    return {
+      ...userMessage('回答'),
+      id,
+      role: 'assistant',
+      knowledge_refs: null
+    }
+  }
+
+  it('用户消息悬停提供 复制/编辑/删除', () => {
+    render(
+      <MemoryRouter>
+        <MessageBubble message={userMessage('你好')} onDelete={() => undefined} />
+      </MemoryRouter>
+    )
+    expect(screen.getByLabelText('复制')).toBeInTheDocument()
+    expect(screen.getByLabelText('编辑')).toBeInTheDocument()
+    expect(screen.getByLabelText('删除')).toBeInTheDocument()
+  })
+
+  it('编辑进入内联编辑器，重发回调携带新文本（剥离图片引用）', async () => {
+    const onEdit = vi.fn()
+    render(
+      <MemoryRouter>
+        <MessageBubble
+          message={userMessage('这是什么\n\n![图片](attachments/2026/09/a.png)')}
+          onEdit={onEdit}
+        />
+      </MemoryRouter>
+    )
+    await userEvent.click(screen.getByLabelText('编辑'))
+    const textarea = screen.getByRole('textbox')
+    expect(textarea).toHaveValue('这是什么') // 图片引用不进编辑框
+    await userEvent.clear(textarea)
+    await userEvent.type(textarea, '改后的问题')
+    await userEvent.click(screen.getByText('重发'))
+    expect(onEdit).toHaveBeenCalledWith('改后的问题')
+  })
+
+  it('最后一条 AI 回复提供重新生成，非最后一条不提供', () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <MessageBubble message={assistantMessage()} isLast onRegenerate={() => undefined} />
+      </MemoryRouter>
+    )
+    expect(screen.getByLabelText('重新生成')).toBeInTheDocument()
+
+    rerender(
+      <MemoryRouter>
+        <MessageBubble message={assistantMessage()} isLast={false} onRegenerate={() => undefined} />
+      </MemoryRouter>
+    )
+    expect(screen.queryByLabelText('重新生成')).not.toBeInTheDocument()
   })
 })
