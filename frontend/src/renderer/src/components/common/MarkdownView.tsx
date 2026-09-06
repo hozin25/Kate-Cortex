@@ -2,6 +2,7 @@ import { memo, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createHighlighter, type Highlighter } from 'shiki'
+import { apiUrl } from '@renderer/api/client'
 import { cn } from '@renderer/lib/utils'
 
 let highlighterPromise: Promise<Highlighter> | null = null
@@ -104,9 +105,7 @@ export const MarkdownView = memo(function MarkdownView({ content, className }: M
           img({ src, alt }) {
             // 附件引用是 vault 相对路径，指向本地后端静态服务；data URL（乐观渲染）直通
             const url =
-              typeof src === 'string' && src.startsWith('attachments/')
-                ? `http://127.0.0.1:1738/api/${src}`
-                : src
+              typeof src === 'string' && src.startsWith('attachments/') ? apiUrl(`/${src}`) : src
             return (
               <img
                 src={url}

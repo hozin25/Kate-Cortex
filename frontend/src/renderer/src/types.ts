@@ -31,6 +31,13 @@ export interface CollectionCount {
   count: number
 }
 
+export interface TrashedEntry {
+  id: string
+  title: string
+  file_path: string
+  deleted_at: string
+}
+
 export interface ChatSession {
   id: string
   title: string | null

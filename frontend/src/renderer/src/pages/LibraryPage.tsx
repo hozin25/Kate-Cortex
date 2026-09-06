@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'motion/react'
-import { FolderOpen, Library, List, Move3d, Pencil, Plus, Search, X } from 'lucide-react'
+import { FolderOpen, Library, List, Move3d, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
 import { Spinner } from '@renderer/components/common/Badges'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { VectorGraph } from '@renderer/components/library/VectorGraph'
@@ -92,6 +92,13 @@ export function LibraryPage(): React.JSX.Element {
           知识库 <span className="ml-1 text-sm text-zinc-500">{total} 条</span>
         </h1>
         <div className="flex items-center gap-3">
+          <Link
+            to="/trash"
+            className="grid size-8 place-items-center rounded-xl border border-white/[0.06] bg-white/[0.03] text-zinc-400 transition hover:text-zinc-200"
+            title="回收站"
+          >
+            <Trash2 className="size-4" />
+          </Link>
           <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
             <ViewTab
               active={view === 'list'}

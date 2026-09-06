@@ -9,7 +9,10 @@ router = APIRouter(tags=["settings"])
 
 @router.get("/settings", response_model=SettingsOut)
 def get_settings(request: Request):
-    return request.app.state.settings_service.get_all()
+    result = request.app.state.settings_service.get_all()
+    # 诚实化：返回实际生效路径（config 决定），而非从不生效的存储值
+    result["vault_path"] = str(request.app.state.storage.vault)
+    return result
 
 
 @router.put("/settings", response_model=SettingsOut)
@@ -20,6 +23,7 @@ def update_settings(payload: SettingsUpdate, request: Request):
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    updated["vault_path"] = str(request.app.state.storage.vault)
     return updated
 
 

@@ -23,6 +23,7 @@ from .slugify import slugify
 from .vectors import VectorIndex
 
 TRASH_DIR = ".trash"
+TRASH_RETENTION_DAYS = 30  # DESIGN §9：回收站保留 30 天后清理（启动时执行）
 
 # 用户档案常驻注入按「个人信息」合集识别（DESIGN.md §7）
 PROFILE_COLLECTION = "个人信息"
@@ -92,6 +93,14 @@ class EntrySummary:
 class SyncReport:
     unindexed: list[str]
     missing_files: list[str]
+
+
+@dataclass
+class TrashedEntry:
+    id: str
+    title: str
+    file_path: str  # .trash 内相对路径
+    deleted_at: str  # 文件 mtime（删除时间近似）
 
 
 class Storage:
@@ -342,6 +351,60 @@ class Storage:
             assert restored is not None
             return restored
         raise EntryNotFound(f"回收站中找不到条目: {entry_id}")
+
+    # ── 回收站 ──
+
+    def list_trash(self) -> list[TrashedEntry]:
+        """列出回收站可恢复条目（按删除时间倒序；frontmatter 损坏的文件跳过）"""
+        trashed: list[TrashedEntry] = []
+        for md_file in (self.vault / TRASH_DIR).rglob("*.md"):
+            try:
+                meta, _ = parse_markdown(md_file.read_text(encoding="utf-8"))
+            except FrontmatterError:
+                continue
+            mtime = datetime.fromtimestamp(md_file.stat().st_mtime).astimezone()
+            trashed.append(
+                TrashedEntry(
+                    id=meta.id,
+                    title=meta.title,
+                    file_path=md_file.relative_to(self.vault).as_posix(),
+                    deleted_at=mtime.isoformat(timespec="seconds"),
+                )
+            )
+        trashed.sort(key=lambda t: t.deleted_at, reverse=True)
+        return trashed
+
+    def purge_trashed(self, entry_id: str) -> str:
+        """从回收站彻底删除单个条目文件，返回被删的相对路径"""
+        for md_file in (self.vault / TRASH_DIR).rglob("*.md"):
+            try:
+                meta, _ = parse_markdown(md_file.read_text(encoding="utf-8"))
+            except FrontmatterError:
+                continue
+            if meta.id != entry_id:
+                continue
+            rel = md_file.relative_to(self.vault).as_posix()
+            md_file.unlink()
+            return rel
+        raise EntryNotFound(f"回收站中找不到条目: {entry_id}")
+
+    def cleanup_trash(self, days: int = TRASH_RETENTION_DAYS) -> int:
+        """删除回收站中超期文件（按文件 mtime），返回清理数量；空目录一并移除"""
+        cutoff = datetime.now().timestamp() - days * 86400
+        removed = 0
+        trash_root = self.vault / TRASH_DIR
+        if not trash_root.is_dir():
+            return 0
+        for md_file in trash_root.rglob("*.md"):
+            if md_file.stat().st_mtime < cutoff:
+                md_file.unlink()
+                removed += 1
+        for directory in sorted(
+            (d for d in trash_root.rglob("*") if d.is_dir()), key=lambda p: len(p.parts), reverse=True
+        ):
+            if not any(directory.iterdir()):
+                directory.rmdir()
+        return removed
 
     # ── 同步 ──
 

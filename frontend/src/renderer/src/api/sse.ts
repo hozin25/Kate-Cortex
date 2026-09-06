@@ -1,5 +1,8 @@
 const BASE = 'http://127.0.0.1:1738/api'
 
+const API_TOKEN: string | undefined = (globalThis as { __KATE_API_TOKEN__?: string })
+  .__KATE_API_TOKEN__
+
 export interface SseHandler {
   onEvent: (event: string, data: Record<string, unknown>) => void
   onError?: (message: string) => void
@@ -15,7 +18,10 @@ export async function postSse(
 ): Promise<void> {
   const resp = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(API_TOKEN ? { 'X-Kate-Token': API_TOKEN } : {})
+    },
     body: JSON.stringify(body),
     signal
   })

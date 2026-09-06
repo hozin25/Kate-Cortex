@@ -594,15 +594,16 @@ frontend/src/
 
 ---
 
-## 9. 安全与隐私
+## 9. 安全与隐私（2026-09-07 P0 加固后）
 
 | 维度 | 策略 |
 |---|---|
 | 数据边界 | 知识 md + SQLite + 对话历史全本地；仅调 LLM API 出网 |
 | 服务绑定 | `127.0.0.1` only |
-| API key | settings 表 + 本地配置文件，不入 vault、不进 md、不打日志 |
+| 本地鉴权 | 可选：环境变量 `KATE_API_TOKEN` 启用后所有 /api 请求须携带 `X-Kate-Token` 头 / `Authorization: Bearer` / `?api_token=`（`<img>` 场景），`/api/health` 豁免（sidecar 探测）；token 由 Electron sidecar 启动时生成注入，未设置则不启用（dev 手动起后端不变） |
+| API key | settings 表中经 **Windows DPAPI 加密**（`dpapi:` 前缀密文，仅当前用户可解，security.py），写侧加密读侧解密对调用方透明；历史明文启动时自动迁移；不入 vault、不进 md、不打日志 |
 | 出网内容 | 用户消息 + system prompt（含 RAG 检索片段）发给所选 provider——切换 provider 即切换数据去向 |
-| 软删除 | `.trash/` 保留 30 天（可配置）后清理 |
+| 软删除 | `.trash/` 完整回收站（2026-09-07）：`GET /api/trash` 列表 + 恢复 + `DELETE /api/trash/:id` 彻底删除；保留 30 天，启动时自动清理超期文件 |
 | 备份 | 用户自行 git 管理 vault |
 
 ---
@@ -692,7 +693,8 @@ MVP 合计 6~7 人天。
   `%USERPROFILE%\Kate-Cortex\vault`；config + settings 可覆盖
 - [ ] 对话历史导出 markdown 的格式（v0.2）
 - [ ] RAG 注入条数 / token 预算实测调参（当前 3 条 / 2000 tokens 为拍板值）
-- [ ] API key：MVP 明文 settings 表，何时升级 OS keyring
+- [x] API key 明文问题（2026-09-07 解决）：settings 表凭据经 Windows DPAPI
+  加密存储（security.py），历史明文启动时自动迁移；OS keyring 不再需要
 - [x] embedding provider 选型（2026-09-01 拍板）：GLM embedding-3——OpenAI 兼容、
   复用现有 glm key 用户零新配置、支持 1024 维（见 §7.2）；硅基流动/本地模型留扩展位
 - [x] 项目名：维持 Kate-Cortex（2026-08-17 拍板）

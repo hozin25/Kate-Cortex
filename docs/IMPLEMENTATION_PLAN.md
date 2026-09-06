@@ -373,6 +373,24 @@ git commit -m "docs: project requirements, design and tech stack"
 
 ---
 
+## 阶段 12：P0 加固四件套（2026-09-07 完成）
+
+**目标**：竞品分析 P0 清单中除打包外的四项一次清完。
+
+| # | 项 | 实现 |
+|---|---|---|
+| 12.1 | 凭据静态加密 | `security.py`：ctypes 直调 DPAPI（零新依赖），`dpapi:` 前缀 + base64 密文；SettingsService 写侧加密读侧解密（调用方无感）；启动迁移 `encrypt_existing_secrets()` 重写历史明文；非 Windows 恒等降级 |
+| 12.2 | 本地 API 鉴权 | `KATE_API_TOKEN` 环境变量启用中间件：X-Kate-Token / Bearer / `?api_token=`（img 场景）三通道，`/api/health` 豁免（sidecar 探测）；未设置不启用，dev 工作流不变。前端 client/sse/MarkdownView 预留 `window.__KATE_API_TOKEN__` 注入（阶段 5 sidecar 落地时接线） |
+| 12.3 | vault_path 诚实化 | `SettingsUpdate` 去字段 + `extra=forbid`（发它即 422 明拒）；GET 返回 config 实际生效路径；遗留存储行不再透出；设置页文案改为「启动时确定」 |
+| 12.4 | 回收站补全 | `GET /api/trash`（list_trash 按 mtime 倒序）+ `DELETE /api/trash/:id`（彻底删除）+ `cleanup_trash()`（30 天超期启动清理，DESIGN §9 兑现）；前端 TrashPage（恢复/彻底删除/空态）+ 知识库页入口 |
+
+**执行记录**：后端 342 测试通过（+23）；前端 typecheck/ESLint/Vitest（25）全绿。
+security.py 首版有 ctypes 函数取用 bug（getter 当函数调），被全量测试当场抓住。
+
+**提交点**：`feat: p0 hardening (dpapi secrets, local api auth, trash ui, honest vault path)`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |

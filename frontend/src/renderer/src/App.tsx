@@ -12,6 +12,7 @@ import { Brain, Library, MessagesSquare, Settings } from 'lucide-react'
 import { ChatPage } from '@renderer/pages/ChatPage'
 import { LibraryPage } from '@renderer/pages/LibraryPage'
 import { MemoriesPage } from '@renderer/pages/MemoriesPage'
+import { TrashPage } from '@renderer/pages/TrashPage'
 import { EntryDetailPage } from '@renderer/pages/EntryDetailPage'
 import { EntryEditPage } from '@renderer/pages/EntryEditPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
@@ -40,6 +41,7 @@ export function App(): React.JSX.Element {
             <Route path="/" element={<ChatPage />} />
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/memories" element={<MemoriesPage />} />
+            <Route path="/trash" element={<TrashPage />} />
             <Route path="/entries/new" element={<EntryEditPage />} />
             <Route path="/entries/:id" element={<EntryDetailPage />} />
             <Route path="/entries/:id/edit" element={<EntryEditPage />} />

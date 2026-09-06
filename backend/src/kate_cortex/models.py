@@ -138,12 +138,16 @@ class ChatResend(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
+    """extra=forbid：vault_path 等无效字段直接 422，而不是静默忽略造成
+    "看似配置成功"的误导（诚实原则）"""
+
+    model_config = {"extra": "forbid"}
+
     provider_keys: dict[str, str] | None = None
     default_provider: ProviderName | None = None
     default_model: str | None = None
     rag_default: bool | None = None
     memory_enabled: bool | None = None
-    vault_path: str | None = None
     embedding_provider: EmbeddingProviderName | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
@@ -157,7 +161,7 @@ class SettingsOut(BaseModel):
     default_model: str
     rag_default: bool
     memory_enabled: bool
-    vault_path: str | None
+    vault_path: str | None  # 当前实际生效的 vault 路径（来自 config，非存储值）
     embedding_provider: str
     embedding_model: str
     embedding_api_key: str | None
@@ -200,3 +204,10 @@ class ProjectionOut(BaseModel):
 
 class ProviderTestIn(BaseModel):
     provider: ProviderName
+
+
+class TrashOut(BaseModel):
+    id: str
+    title: str
+    file_path: str
+    deleted_at: str

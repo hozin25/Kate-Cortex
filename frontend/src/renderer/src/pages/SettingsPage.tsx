@@ -443,13 +443,13 @@ export function SettingsPage(): React.JSX.Element {
         </GlassPanel>
 
         <GlassPanel className="p-5">
-          <div className="text-sm font-medium text-zinc-200">Vault 路径</div>
+          <div className="text-sm font-medium text-zinc-200">Vault 路径（启动时确定）</div>
           <p className="mt-1 break-all font-mono text-xs leading-5 text-zinc-500">
             {settings.vault_path ?? '（使用默认路径）'}
           </p>
           <p className="mt-2 text-[11px] leading-4 text-zinc-600">
-            所有笔记以 Markdown
-            文件存于此目录，可直接用任意编辑器打开。当前版本暂不支持在界面内修改。
+            所有笔记以 Markdown 文件存于此目录，可直接用任意编辑器打开。路径由环境变量
+            KATE_VAULT_PATH / KATE_DB_PATH 或默认位置决定，不支持在界面内修改。
           </p>
         </GlassPanel>
       </div>
