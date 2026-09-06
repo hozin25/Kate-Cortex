@@ -165,7 +165,8 @@ class TestSettingsApi:
             create_app(Config(vault_path=env.vault_path, db_path=env.db_path))
         )
         resp = fresh.get("/api/settings").json()
-        assert resp["default_provider"] == "deepseek"
+        assert resp["default_provider"] == "glm"
+        assert resp["default_model"] == "glm-4.7-flash"
         assert resp["rag_default"] is True
         assert resp["provider_keys"] == {}
 

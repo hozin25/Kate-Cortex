@@ -1,5 +1,5 @@
 export type EntrySource = 'manual' | 'chat' | 'import'
-export type ProviderName = 'deepseek' | 'glm' | 'glm-coding'
+export type ProviderName = 'deepseek' | 'glm' | 'glm-coding' | 'siliconflow' | 'modelscope'
 export type EmbeddingProviderName = 'glm' | 'siliconflow'
 
 export interface EntrySummary {

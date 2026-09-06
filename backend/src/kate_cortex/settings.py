@@ -5,8 +5,8 @@ import sqlite3
 
 DEFAULTS = {
     "provider_keys": {},
-    "default_provider": "deepseek",
-    "default_model": "deepseek-chat",
+    "default_provider": "glm",  # 免费档 glm-4.7-flash 开箱即用
+    "default_model": "glm-4.7-flash",
     "rag_default": True,
     "memory_enabled": True,
     "vault_path": None,
@@ -17,7 +17,7 @@ DEFAULTS = {
     "export_dir": None,  # export_markdown 导出文件夹；空则用 文档\Kate-Cortex 导出
 }
 
-KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding"}
+KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding", "siliconflow", "modelscope"}
 
 
 class SettingsService:

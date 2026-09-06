@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from typing import Any
 
+from kate_cortex.providers import DEFAULT_MODELS, REGISTRY
 from kate_cortex.providers.anthropic_compat import (
     to_anthropic_messages,
     to_anthropic_tools,
@@ -14,7 +15,9 @@ from kate_cortex.providers.base import (
 from kate_cortex.providers.deepseek import DeepSeekProvider
 from kate_cortex.providers.glm import GLMProvider
 from kate_cortex.providers.glm_coding import GLMCodingProvider
+from kate_cortex.providers.modelscope import ModelScopeProvider
 from kate_cortex.providers.openai_compat import OpenAICompatProvider
+from kate_cortex.providers.siliconflow import SiliconFlowProvider
 
 
 def chunk(content=None, tool_calls=None, finish_reason=None):
@@ -150,9 +153,79 @@ class TestProviderClasses:
         assert provider.base_url == "https://api.deepseek.com/v1"
 
     def test_glm_base_url(self):
-        provider = GLMProvider(api_key="sk", model="glm-4-flash")
+        provider = GLMProvider(api_key="sk", model="glm-4.7-flash")
         assert provider.name == "glm"
         assert provider.base_url == "https://open.bigmodel.cn/api/paas/v4"
+
+    def test_siliconflow_base_url(self):
+        provider = SiliconFlowProvider(api_key="sk", model="Qwen/Qwen3-8B")
+        assert provider.name == "siliconflow"
+        assert provider.base_url == "https://api.siliconflow.cn/v1"
+
+    def test_modelscope_base_url(self):
+        provider = ModelScopeProvider(
+            api_key="ms-xxx", model="Qwen/Qwen3-235B-A22B-Instruct-2507"
+        )
+        assert provider.name == "modelscope"
+        assert provider.base_url == "https://api-inference.modelscope.cn/v1"
+
+    def test_registry_defaults_are_free_tier(self):
+        assert REGISTRY.keys() >= {"deepseek", "glm", "glm-coding", "siliconflow", "modelscope"}
+        assert DEFAULT_MODELS["glm"] == "glm-4.7-flash"
+        assert DEFAULT_MODELS["siliconflow"] == "Qwen/Qwen3-8B"
+        assert DEFAULT_MODELS["modelscope"] == "Qwen/Qwen3-235B-A22B-Instruct-2507"
+
+
+def make_siliconflow_provider(model: str, captured: dict) -> SiliconFlowProvider:
+    provider = SiliconFlowProvider(api_key="sk-test", model=model)
+
+    def fake_create(**kwargs):
+        captured.update(kwargs)
+        return iter([chunk(content="ok"), chunk(finish_reason="stop")])
+
+    provider._client_factory = lambda: SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
+    )
+    return provider
+
+
+class TestSiliconFlowThinkingSwitch:
+    """混合推理 Qwen3 默认开思考、思考文本会污染流式正文，须显式关闭；
+    Instruct/Thinking 专版与非 Qwen 模型不认 enable_thinking，不能传"""
+
+    def test_hybrid_qwen3_disables_thinking(self):
+        captured: dict = {}
+        provider = make_siliconflow_provider("Qwen/Qwen3-8B", captured)
+
+        list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+        assert captured["extra_body"] == {"enable_thinking": False}
+
+    def test_hybrid_qwen3_moe_disables_thinking(self):
+        captured: dict = {}
+        provider = make_siliconflow_provider("Qwen/Qwen3-30B-A3B", captured)
+
+        list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+        assert captured["extra_body"] == {"enable_thinking": False}
+
+    def test_instruct_variant_omits_flag(self):
+        captured: dict = {}
+        provider = make_siliconflow_provider(
+            "Qwen/Qwen3-235B-A22B-Instruct-2507", captured
+        )
+
+        list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+        assert "extra_body" not in captured
+
+    def test_non_qwen_model_omits_flag(self):
+        captured: dict = {}
+        provider = make_siliconflow_provider("deepseek-ai/DeepSeek-V3", captured)
+
+        list(provider.chat_stream([{"role": "user", "content": "hi"}]))
+
+        assert "extra_body" not in captured
 
 
 def block_start(index, block_type, **fields):

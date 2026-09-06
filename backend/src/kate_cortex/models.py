@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 EntrySource = Literal["manual", "chat", "import"]
-ProviderName = Literal["deepseek", "glm", "glm-coding"]
+ProviderName = Literal["deepseek", "glm", "glm-coding", "siliconflow", "modelscope"]
 EmbeddingProviderName = Literal["glm", "siliconflow"]
 
 
@@ -120,7 +120,8 @@ class MessageOut(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = ""  # 图片-only 消息允许空文本（与 images 至少有一）
+    images: list[str] = Field(default_factory=list, max_length=4)  # data URL
     rag_enabled: bool | None = None
 
 

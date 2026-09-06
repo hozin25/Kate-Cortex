@@ -16,10 +16,10 @@ class OpenAICompatProvider(BaseProvider):
             base_url=self.base_url, api_key=self.api_key
         )
 
-    def chat_stream(
+    def _request_kwargs(
         self, messages: list[dict], tools: list[dict] | None = None
-    ) -> Iterator[StreamEvent]:
-        client = self._client_factory()
+    ) -> dict:
+        """子类可覆盖以注入服务商私有参数（如硅基流动 enable_thinking）"""
         kwargs: dict = {
             "model": self.model,
             "messages": messages,
@@ -28,6 +28,13 @@ class OpenAICompatProvider(BaseProvider):
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
+        return kwargs
+
+    def chat_stream(
+        self, messages: list[dict], tools: list[dict] | None = None
+    ) -> Iterator[StreamEvent]:
+        client = self._client_factory()
+        kwargs = self._request_kwargs(messages, tools)
 
         finish_reason: str | None = None
         stream = client.chat.completions.create(**kwargs)

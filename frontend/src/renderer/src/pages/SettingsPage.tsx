@@ -15,8 +15,20 @@ import type {
 } from '@renderer/types'
 
 const PROVIDERS: { name: ProviderName; label: string; keyHint: string; modelHint: string }[] = [
+  { name: 'glm', label: 'GLM（智谱）', keyHint: '…xxx.Sxxxx', modelHint: 'glm-4.7-flash' },
+  {
+    name: 'siliconflow',
+    label: '硅基流动（免费档）',
+    keyHint: 'sk-…',
+    modelHint: 'Qwen/Qwen3-8B'
+  },
+  {
+    name: 'modelscope',
+    label: '魔搭 ModelScope（每日 2000 次免费）',
+    keyHint: 'ms-…',
+    modelHint: 'Qwen/Qwen3-235B-A22B-Instruct-2507'
+  },
   { name: 'deepseek', label: 'DeepSeek', keyHint: 'sk-…', modelHint: 'deepseek-chat' },
-  { name: 'glm', label: 'GLM（智谱）', keyHint: '…xxx.Sxxxx', modelHint: 'glm-4-flash' },
   {
     name: 'glm-coding',
     label: 'GLM 编程套餐',
@@ -100,6 +112,10 @@ export function SettingsPage(): React.JSX.Element {
           </div>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
             Key 保存在本地 SQLite，仅用于从本机直连对应服务商。填写后点击「测试」验证连通。
+          </p>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            免费组合推荐：对话用 GLM（glm-4.7-flash 完全免费）或硅基流动（Qwen3-8B
+            免费档），语义检索用下方硅基流动 bge-m3（免费）——全程零成本。
           </p>
           <div className="mt-4 space-y-4">
             {PROVIDERS.map((p) => {

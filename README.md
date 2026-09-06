@@ -35,7 +35,7 @@
 | 前端 | React + TypeScript + Tailwind + CodeMirror；三维视图 three.js + react-three-fiber |
 | 后端 | Python 3.12 + FastAPI；三维投影 scikit-learn（t-SNE/PCA） |
 | 存储 | SQLite + sqlite-vec |
-| LLM | GLM / DeepSeek（OpenAI 兼容）；向量检索：GLM embedding-3 或硅基流动 bge-m3（免费） |
+| LLM | GLM / DeepSeek / 硅基流动 / 魔搭（OpenAI 兼容）；免费组合：glm-4.7-flash（智谱免费）· Qwen3-8B（硅基流动免费档）· 魔搭每日 2000 次；向量检索：GLM embedding-3 或硅基流动 bge-m3（免费） |
 
 详见 [设计文档](./docs/DESIGN.md)。
 
