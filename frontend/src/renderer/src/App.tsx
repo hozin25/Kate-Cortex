@@ -8,9 +8,10 @@ import {
   useNavigate,
   useSearchParams
 } from 'react-router-dom'
-import { Library, MessagesSquare, Settings } from 'lucide-react'
+import { Brain, Library, MessagesSquare, Settings } from 'lucide-react'
 import { ChatPage } from '@renderer/pages/ChatPage'
 import { LibraryPage } from '@renderer/pages/LibraryPage'
+import { MemoriesPage } from '@renderer/pages/MemoriesPage'
 import { EntryDetailPage } from '@renderer/pages/EntryDetailPage'
 import { EntryEditPage } from '@renderer/pages/EntryEditPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
@@ -24,6 +25,7 @@ import { cn } from '@renderer/lib/utils'
 const NAV_ITEMS = [
   { to: '/', icon: MessagesSquare, label: '对话' },
   { to: '/library', icon: Library, label: '知识库' },
+  { to: '/memories', icon: Brain, label: '记忆' },
   { to: '/settings', icon: Settings, label: '设置' }
 ]
 
@@ -37,6 +39,7 @@ export function App(): React.JSX.Element {
           <Routes>
             <Route path="/" element={<ChatPage />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/memories" element={<MemoriesPage />} />
             <Route path="/entries/new" element={<EntryEditPage />} />
             <Route path="/entries/:id" element={<EntryDetailPage />} />
             <Route path="/entries/:id/edit" element={<EntryEditPage />} />

@@ -27,6 +27,11 @@ TRASH_DIR = ".trash"
 # 用户档案常驻注入按「个人信息」合集识别（DESIGN.md §7）
 PROFILE_COLLECTION = "个人信息"
 
+# 系统合集：档案常驻注入（§7）与自动记忆（§7.1）按合集名识别，删除/重命名
+# 会让对应机制对存量条目静默失效——在 storage 层拒绝（创建不受限，
+# save_memory 首次落库依赖自动建「记忆」合集）
+PROTECTED_COLLECTIONS = frozenset({PROFILE_COLLECTION, "记忆"})
+
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +49,10 @@ class CollectionExists(StorageError):
 
 class CollectionNotFound(StorageError):
     pass
+
+
+class ProtectedCollection(StorageError):
+    """系统合集（记忆/个人信息）不允许删除或重命名"""
 
 
 @dataclass
@@ -432,6 +441,10 @@ class Storage:
             )
 
     def rename_collection(self, old: str, new: str) -> int:
+        if old in PROTECTED_COLLECTIONS:
+            raise ProtectedCollection(
+                f"「{old}」是系统合集，不能重命名——自动记忆/用户档案按此合集名识别"
+            )
         row = self._collection_row(old)
         if row is None:
             raise CollectionNotFound(f"合集不存在: {old}")
@@ -465,6 +478,10 @@ class Storage:
         return len(member_ids)
 
     def delete_collection(self, name: str) -> int:
+        if name in PROTECTED_COLLECTIONS:
+            raise ProtectedCollection(
+                f"「{name}」是系统合集，不能删除——条目可在记忆页/编辑页单独管理或移出"
+            )
         row = self._collection_row(name)
         if row is None:
             raise CollectionNotFound(f"合集不存在: {name}")

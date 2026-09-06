@@ -10,6 +10,8 @@ export interface EntrySummary {
   source: string
   language: string | null
   conversation_id: string | null
+  keywords: string[]
+  importance: number | null
   created_at: string
   updated_at: string
 }

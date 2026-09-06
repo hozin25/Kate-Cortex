@@ -195,6 +195,41 @@ class TestCollections:
         assert client.delete("/api/collections/不存在").status_code == 404
 
 
+class TestProtectedCollections:
+    """系统合集（记忆/个人信息）删除或重命名会让记忆/档案机制静默失效，须拒绝"""
+
+    def test_delete_memory_collection_returns_409(self, client):
+        create(client, title="感冒了", collections=["记忆"])
+
+        resp = client.delete("/api/collections/记忆")
+
+        assert resp.status_code == 409
+        assert "系统合集" in resp.json()["detail"]
+        names = {item["name"] for item in client.get("/api/collections").json()}
+        assert "记忆" in names  # 合集与成员条目原样保留
+
+    def test_delete_profile_collection_returns_409(self, client):
+        assert client.delete("/api/collections/个人信息").status_code == 409
+
+    def test_rename_memory_collection_returns_409(self, client):
+        resp = client.put("/api/collections/记忆", json={"name": "我的记忆"})
+
+        assert resp.status_code == 409
+        assert "系统合集" in resp.json()["detail"]
+
+    def test_create_memory_collection_still_allowed(self, client):
+        # save_memory 首次落库依赖自动/显式创建「记忆」合集，不能误伤
+        assert client.post("/api/collections", json={"name": "记忆"}).status_code == 201
+
+    def test_rename_other_collection_to_protected_name_allowed(self, client):
+        # 改名为系统合集名等同于创建，不影响既有机制
+        assert client.post("/api/collections", json={"name": "生活"}).status_code == 201
+
+        resp = client.put("/api/collections/生活", json={"name": "记忆"})
+
+        assert resp.status_code == 200
+
+
 class TestSync:
     def test_sync_reindexes_external_file(self, client, env):
         entry = create(client)

@@ -1,7 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from ..models import CollectionCreate, CollectionOut, CollectionRename
-from ..storage import CollectionExists, CollectionNotFound, StorageError
+from ..storage import (
+    CollectionExists,
+    CollectionNotFound,
+    ProtectedCollection,
+    StorageError,
+)
 
 router = APIRouter(prefix="/collections", tags=["collections"])
 
@@ -32,6 +37,8 @@ def rename_collection(name: str, payload: CollectionRename, request: Request):
         raise HTTPException(status_code=404, detail=str(exc))
     except CollectionExists as exc:
         raise HTTPException(status_code=409, detail=str(exc))
+    except ProtectedCollection as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
     except StorageError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return CollectionOut(name=payload.name.strip(), count=count)
@@ -43,3 +50,5 @@ def delete_collection(name: str, request: Request):
         request.app.state.storage.delete_collection(name)
     except CollectionNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    except ProtectedCollection as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
