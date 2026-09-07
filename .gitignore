@@ -35,6 +35,7 @@ vault/.trash/
 # IDE
 .vscode/
 .idea/
+.zcode/
 *.swp
 
 # OS
