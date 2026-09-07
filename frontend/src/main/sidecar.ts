@@ -109,20 +109,43 @@ export async function startSidecar(): Promise<SidecarHandle> {
   }
 
   const { command, args, cwd } = backendCommand(port)
-  const child = spawn(command, args, {
-    cwd,
-    env: { ...process.env, KATE_API_TOKEN: token },
-    windowsHide: true,
-    stdio: ['ignore', 'pipe', 'pipe']
-  })
-  child.stdout?.on('data', (d) => console.log(`[sidecar] ${String(d).trim()}`))
-  child.stderr?.on('data', (d) => console.error(`[sidecar] ${String(d).trim()}`))
-  child.on('exit', (code) => console.warn(`[sidecar] 后端退出 code=${code}`))
+  const spawnOnce = (): ChildProcess => {
+    const proc = spawn(command, args, {
+      cwd,
+      env: { ...process.env, KATE_API_TOKEN: token },
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    proc.stdout?.on('data', (d) => console.log(`[sidecar] ${String(d).trim()}`))
+    proc.stderr?.on('data', (d) => console.error(`[sidecar] ${String(d).trim()}`))
+    return proc
+  }
+
+  let child = spawnOnce()
+  let stopped = false
+  let restarts = 0
+  // 意外死亡自动复活（上限 3 次防死循环）：后端被外部 kill（如开发期手动
+  // 重启 1738）不再连带整个应用退出；同 port 同 token 重拉，renderer 无感
+  const onExit = (code: number | null): void => {
+    if (stopped) return
+    if (++restarts > 3) {
+      console.error(`[sidecar] 后端反复退出（code=${code}），放弃自动重启`)
+      return
+    }
+    console.warn(`[sidecar] 后端意外退出 code=${code}，1s 后自动重启（第 ${restarts} 次）`)
+    setTimeout(() => {
+      if (stopped) return
+      child = spawnOnce()
+      child.on('exit', onExit)
+    }, 1000)
+  }
+  child.on('exit', onExit)
 
   // 2) 健康轮询直到就绪（uv 冷启动首次要装环境，给足 60s）
   const deadline = Date.now() + STARTUP_TIMEOUT_MS
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
+      stopped = true
       throw new Error(`后端进程提前退出（code=${child.exitCode}）`)
     }
     const probe = await probeHealth(port)
@@ -131,11 +154,15 @@ export async function startSidecar(): Promise<SidecarHandle> {
         port,
         token,
         child,
-        stop: () => killTree(child.pid ?? -1)
+        stop: async () => {
+          stopped = true
+          await killTree(child.pid ?? -1)
+        }
       }
     }
     await sleep(POLL_INTERVAL_MS)
   }
+  stopped = true
   await killTree(child.pid ?? -1)
   throw new Error(`后端 ${STARTUP_TIMEOUT_MS / 1000}s 内未就绪（端口 ${port}）`)
 }
