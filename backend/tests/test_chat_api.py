@@ -57,6 +57,66 @@ class TestSessionApi:
         )
         assert resp.status_code == 422
 
+    def test_switch_model_keeps_provider(self, client):
+        session = client.post(
+            "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}
+        ).json()
+
+        resp = client.patch(
+            f"/api/chat/sessions/{session['id']}", json={"model": "deepseek-reasoner"}
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["provider"] == "deepseek"
+        assert resp.json()["model"] == "deepseek-reasoner"
+
+    def test_switch_provider_resolves_default_model(self, client):
+        session = client.post(
+            "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}
+        ).json()
+
+        resp = client.patch(
+            f"/api/chat/sessions/{session['id']}", json={"provider": "glm"}
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["provider"] == "glm"
+        # 全新默认 provider=glm → 直接取默认模型 glm-4.7-flash
+        assert body["model"] == "glm-4.7-flash"
+
+    def test_switch_provider_without_key_400(self, client):
+        session = client.post(
+            "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}
+        ).json()
+
+        resp = client.patch(
+            f"/api/chat/sessions/{session['id']}", json={"provider": "siliconflow"}
+        )
+
+        assert resp.status_code == 400
+        assert "siliconflow" in resp.json()["detail"]
+
+    def test_patch_empty_body_422(self, client):
+        session = client.post(
+            "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}
+        ).json()
+
+        resp = client.patch(f"/api/chat/sessions/{session['id']}", json={})
+
+        assert resp.status_code == 422
+
+    def test_models_catalog_marks_key_and_free(self, client):
+        resp = client.get("/api/models")
+        assert resp.status_code == 200
+        providers = {p["name"]: p for p in resp.json()["providers"]}
+
+        assert providers["glm"]["has_key"] is True
+        assert providers["siliconflow"]["has_key"] is False
+        glm_models = {m["model"]: m for m in providers["glm"]["models"]}
+        assert glm_models["glm-4.7-flash"]["free"] is True
+        assert glm_models["glm-4.5"]["free"] is False
+
     def test_messages_endpoint(self, client):
         session = client.post(
             "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}

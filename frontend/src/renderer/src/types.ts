@@ -2,6 +2,18 @@ export type EntrySource = 'manual' | 'chat' | 'import'
 export type ProviderName = 'deepseek' | 'glm' | 'glm-coding' | 'siliconflow' | 'modelscope'
 export type EmbeddingProviderName = 'glm' | 'siliconflow'
 
+export interface ModelCatalogItem {
+  model: string
+  label: string
+  free: boolean
+}
+
+export interface ProviderCatalog {
+  name: ProviderName
+  has_key: boolean
+  models: ModelCatalogItem[]
+}
+
 export interface EntrySummary {
   id: string
   slug: string

@@ -283,10 +283,17 @@ DELETE /api/collections/:name           删除合集，成员条目保留
 # 对话
 POST   /api/chat/sessions               {provider, model, title?}
 GET    /api/chat/sessions               列表（含最近消息预览）
-PATCH  /api/chat/sessions/:id           重命名
+PATCH  /api/chat/sessions/:id           重命名 {title} / 切换模型 {provider?, model?}
+                                         （切 provider 按 DEFAULT_MODELS 解析默认模型，
+                                         未配 key 400；只影响之后请求，历史连续）
 DELETE /api/chat/sessions/:id
 GET    /api/chat/sessions/:id/messages  历史
 POST   /api/chat/sessions/:id/chat      发消息 → SSE 流式响应
+
+# 对话内模型切换（2026-09-07 增补）
+GET    /api/models                      模型目录：各 provider 的可选模型
+                                         （MODEL_CATALOG，free 标注免费档）+ has_key，
+                                         供聊天头部 ModelPicker 弹层渲染
 
 # 对话管理（2026-09-06 增补）
 POST   /api/chat/sessions/:id/regenerate                    重新生成：删最后

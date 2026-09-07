@@ -23,6 +23,46 @@ DEFAULT_MODELS: dict[str, str] = {
     "modelscope": "Qwen/Qwen3-235B-A22B-Instruct-2507",  # 魔搭每日 2000 次免费
 }
 
+# 对话内模型切换的可选目录（label 为展示名，free 标注免费档）；
+# 不在目录里的 model 仍可经设置页自定义使用
+MODEL_CATALOG: dict[str, list[dict]] = {
+    "glm": [
+        {"model": "glm-4.7-flash", "label": "GLM-4.7-Flash", "free": True},
+        {"model": "glm-4-flash-250414", "label": "GLM-4-Flash", "free": True},
+        {"model": "glm-4.5", "label": "GLM-4.5 旗舰", "free": False},
+    ],
+    "glm-coding": [
+        {"model": "glm-5.3", "label": "GLM-5.3", "free": False},
+        {"model": "glm-5.1", "label": "GLM-5.1", "free": False},
+    ],
+    "siliconflow": [
+        {"model": "Qwen/Qwen3-8B", "label": "Qwen3-8B", "free": True},
+        {"model": "Qwen/Qwen3-30B-A3B", "label": "Qwen3-30B-A3B", "free": True},
+        {
+            "model": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+            "label": "Qwen3-Coder-30B",
+            "free": True,
+        },
+    ],
+    "modelscope": [
+        {
+            "model": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+            "label": "Qwen3-235B",
+            "free": True,
+        },
+        {
+            "model": "Qwen/Qwen3-30B-A3B-Instruct-2507",
+            "label": "Qwen3-30B",
+            "free": True,
+        },
+        {"model": "deepseek-ai/DeepSeek-V3", "label": "DeepSeek-V3", "free": True},
+    ],
+    "deepseek": [
+        {"model": "deepseek-chat", "label": "DeepSeek-Chat", "free": False},
+        {"model": "deepseek-reasoner", "label": "DeepSeek-Reasoner", "free": False},
+    ],
+}
+
 
 class ProviderFactory:
     def __init__(self, settings_service):

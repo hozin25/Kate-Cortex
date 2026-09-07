@@ -101,6 +101,19 @@ class ChatService:
         assert session is not None
         return session
 
+    def set_session_model(self, session_id: str, provider: str, model: str) -> Session:
+        """对话中途切换模型：只影响之后的请求，历史消息与上下文保持连续"""
+        if self.get_session(session_id) is None:
+            raise SessionNotFound(session_id)
+        with self.conn:
+            self.conn.execute(
+                "UPDATE conversations SET provider = ?, model = ? WHERE id = ?",
+                (provider, model, session_id),
+            )
+        session = self.get_session(session_id)
+        assert session is not None
+        return session
+
     def delete_session(self, session_id: str) -> None:
         if self.get_session(session_id) is None:
             raise SessionNotFound(session_id)

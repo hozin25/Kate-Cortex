@@ -22,7 +22,7 @@ from ..models import (
     MessageOut,
     SessionCreate,
     SessionOut,
-    SessionRename,
+    SessionUpdate,
 )
 from ..providers import DEFAULT_MODELS, vision_supported
 from ..providers.base import ProviderError
@@ -58,13 +58,36 @@ def list_sessions(request: Request):
 
 
 @router.patch("/sessions/{session_id}", response_model=SessionOut)
-def rename_session(session_id: str, payload: SessionRename, request: Request):
-    try:
-        session = request.app.state.chat_service.rename_session(
-            session_id, payload.title
-        )
-    except SessionNotFound:
+def update_session(session_id: str, payload: SessionUpdate, request: Request):
+    """重命名 / 切换模型。切 provider 时按与创建会话相同的规则解析默认模型"""
+    chat_service = request.app.state.chat_service
+    session = chat_service.get_session(session_id)
+    if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
+
+    data = payload.model_dump(exclude_none=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="至少提供 title / provider / model 之一")
+
+    if "provider" in data or "model" in data:
+        provider = data.get("provider", session.provider)
+        model = data.get("model")
+        settings = request.app.state.settings_service.get_all()
+        if not settings["provider_keys"].get(provider):
+            raise HTTPException(
+                status_code=400,
+                detail=f"未配置 {provider} 的 API key，请先到设置页填写",
+            )
+        if model is None:
+            model = (
+                settings["default_model"]
+                if settings["default_provider"] == provider
+                else DEFAULT_MODELS[provider]
+            )
+        session = chat_service.set_session_model(session_id, provider, model)
+
+    if "title" in data:
+        session = chat_service.rename_session(session_id, data["title"])
     return SessionOut(**vars(session))
 
 

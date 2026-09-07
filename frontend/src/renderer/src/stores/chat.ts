@@ -31,6 +31,7 @@ interface ChatState {
   loadSessions: () => Promise<void>
   selectSession: (id: string | null) => Promise<void>
   createSession: (provider: ProviderName) => Promise<void>
+  switchModel: (provider: ProviderName, model: string) => Promise<void>
   renameSession: (id: string, title: string) => Promise<void>
   removeSession: (id: string) => Promise<void>
   sendMessage: (content: string, images?: string[]) => Promise<void>
@@ -159,6 +160,16 @@ export const useChatStore = create<ChatState>((set, get) => {
     renameSession: async (id, title) => {
       const updated = await api.patch<ChatSession>(`/chat/sessions/${id}`, { title })
       set({ sessions: get().sessions.map((s) => (s.id === id ? updated : s)) })
+    },
+
+    switchModel: async (provider, model) => {
+      const { currentId } = get()
+      if (!currentId) return
+      const updated = await api.patch<ChatSession>(`/chat/sessions/${currentId}`, {
+        provider,
+        model
+      })
+      set({ sessions: get().sessions.map((s) => (s.id === updated.id ? updated : s)) })
     },
 
     removeSession: async (id) => {

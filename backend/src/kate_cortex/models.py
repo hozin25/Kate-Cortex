@@ -95,8 +95,12 @@ class SessionCreate(BaseModel):
     title: str | None = None
 
 
-class SessionRename(BaseModel):
-    title: str = Field(min_length=1)
+class SessionUpdate(BaseModel):
+    """重命名 / 切换模型共用的 PATCH 载荷，三字段至少给一个"""
+
+    title: str | None = Field(default=None, min_length=1)
+    provider: ProviderName | None = None
+    model: str | None = None
 
 
 class SessionOut(BaseModel):

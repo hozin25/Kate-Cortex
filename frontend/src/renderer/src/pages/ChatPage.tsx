@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { MessagesSquare } from 'lucide-react'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
+import { ModelPicker } from '@renderer/components/chat/ModelPicker'
 import { SavedCard, SuggestCard } from '@renderer/components/chat/Cards'
 import { CitationChips } from '@renderer/components/chat/CitationChips'
 import { MemoryCard } from '@renderer/components/chat/MemoryCard'
@@ -11,6 +12,7 @@ import { EmptyState } from '@renderer/components/common/EmptyState'
 import { GradientText } from '@renderer/components/common/Glass'
 import { useChatStore } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { toast } from '@renderer/stores/toast'
 
 export function ChatPage(): React.JSX.Element {
   const store = useChatStore()
@@ -28,6 +30,7 @@ export function ChatPage(): React.JSX.Element {
   } = store
   const ragEnabled = store.ragEnabled
   const settings = useSettingsStore((s) => s.settings)
+  const currentSession = store.sessions.find((s) => s.id === currentId) ?? null
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -61,15 +64,28 @@ export function ChatPage(): React.JSX.Element {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center justify-between px-6 pb-2 pt-4">
-        <div className="text-sm text-zinc-400">
+        <div className="min-w-0 truncate text-sm text-zinc-400">
           <GradientText>
             {store.sessions.find((s) => s.id === currentId)?.title ?? '对话'}
           </GradientText>
         </div>
-        <RagToggle
-          enabled={ragEnabled ?? settings?.rag_default ?? false}
-          onChange={(v) => useChatStore.setState({ ragEnabled: v })}
-        />
+        <div className="flex shrink-0 items-center gap-2">
+          {currentSession && (
+            <ModelPicker
+              session={currentSession}
+              disabled={streaming}
+              onSwitch={(p, m) =>
+                store.switchModel(p, m).catch((err) =>
+                  toast.error(err instanceof Error ? err.message : '模型切换失败')
+                )
+              }
+            />
+          )}
+          <RagToggle
+            enabled={ragEnabled ?? settings?.rag_default ?? false}
+            onChange={(v) => useChatStore.setState({ ragEnabled: v })}
+          />
+        </div>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6">
