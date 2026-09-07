@@ -1,7 +1,6 @@
-const BASE = 'http://127.0.0.1:1738/api'
-
-const API_TOKEN: string | undefined = (globalThis as { __KATE_API_TOKEN__?: string })
-  .__KATE_API_TOKEN__
+const RUNTIME = typeof window !== 'undefined' ? window.api?.kateRuntime : undefined
+const BASE = `http://127.0.0.1:${RUNTIME?.apiPort ?? 1738}/api`
+const API_TOKEN = RUNTIME?.apiToken
 
 export interface SseHandler {
   onEvent: (event: string, data: Record<string, unknown>) => void

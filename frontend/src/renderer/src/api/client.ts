@@ -1,9 +1,8 @@
-const BASE = 'http://127.0.0.1:1738/api'
-
-// 本地 API 鉴权 token：Electron sidecar 就绪后由 preload 注入
-// window.__KATE_API_TOKEN__（阶段 5）；dev 手动起后端（无 KATE_API_TOKEN）时为空
-const API_TOKEN: string | undefined = (globalThis as { __KATE_API_TOKEN__?: string })
-  .__KATE_API_TOKEN__
+// 后端端口与鉴权 token 由 Electron preload 注入（sidecar 启动时生成）；
+// 纯 vite / 测试环境无注入，回落到默认端口、不携带 token
+const RUNTIME = typeof window !== 'undefined' ? window.api?.kateRuntime : undefined
+const BASE = `http://127.0.0.1:${RUNTIME?.apiPort ?? 1738}/api`
+const API_TOKEN = RUNTIME?.apiToken
 
 /** 供 <img> 等无法带请求头的场景：token 走查询参数 */
 export function apiUrl(path: string): string {

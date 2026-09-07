@@ -7,50 +7,66 @@
 
 ## 状态
 
-`v0.1 设计中` — 见 [docs/DESIGN.md](./docs/DESIGN.md)
+`v0.1 可用` — 对话即沉淀的完整闭环 + Windows 安装包。详见 [docs/DESIGN.md](./docs/DESIGN.md)
 
-## 核心特性（MVP 目标）
+## 核心特性
 
-- **四种知识类型**：`snippet` / `decision` / `note` / `clip`
-- **Markdown 优先**：每条知识就是一个 .md 文件，可手动编辑、可 git
-- **桌面端**：Tauri + React，本地运行
-- **结构化检索**：标签、项目、类型过滤 + 全文搜索
-- **双向链接**：`[[slug]]` 自动关联
+- **对话即沉淀**：与 Kate（AI）对话，说「记一下」即入库；AI 也会主动建议保存；
+  自动记忆跨话题召回（健康/计划/偏好），记忆管理页集中管理
+- **Markdown 优先**：每条知识就是一个 .md 文件，frontmatter 元数据 + 合集组织 +
+  `[[slug]]` 双向链接，可手动编辑、可 git、回收站 30 天可恢复
+- **混合检索**：FTS5（jieba 中文分词）+ sqlite-vec 向量语义检索（GLM embedding-3
+  或硅基流动 bge-m3 免费档），换个说法也能搜到；语义空间三维视图
+- **多模态**：对话可粘贴/拖入图片提问（glm-5.3 等视觉模型）
+- **MCP 双形态**：客户端接入高德等外部工具；服务端（stdio）向 Claude Code /
+  Cursor 暴露知识检索、沉淀与记忆工具
+- **多模型**：DeepSeek / GLM / GLM 编程套餐 / 硅基流动 / 魔搭，全部本地 key 直连
+- **安全**：API key DPAPI 加密落盘，本地 API token 鉴权，数据全本地
 
-## 后续路线
+## 桌面端（Electron + Python sidecar）
 
-- v0.2：GLM/DeepSeek 对话；向量语义检索已实现（2026-09-01，FTS5 + sqlite-vec
-  混合检索，GLM embedding-3，见 [DESIGN.md §7.2](./docs/DESIGN.md)）；语义空间
-  三维视图已实现（2026-09-01，知识库「立体」tab，t-SNE 降维点云，见
-  [DESIGN.md §7.3](./docs/DESIGN.md)）；MCP client 已实现（2026-09-02，Streamable
-  HTTP 接入外部工具服务，如高德地图 MCP——POI / 路线 / 天气实时查询，可在对话里
-  做旅游行程规划并输出 Markdown，见 [DESIGN.md §6.3](./docs/DESIGN.md)）
-- v0.3：MCP server 已实现（2026-09-07，stdio 暴露 6 个工具——知识检索/读取/沉淀、
-  合集列表、记忆召回/保存，外部 agent 写入打 source=import 标，见
-  [DESIGN.md §15](./docs/DESIGN.md)）。Claude Code 接入：
-  `claude mcp add kate-cortex -s user -- uv run --project <backend目录> python -m kate_cortex.mcp_server`
+日常开发模式（自动拉起后端 sidecar + token 鉴权）：
+
+```bash
+cd frontend && pnpm dev          # Electron 主进程 spawn 后端并等待就绪
+```
+
+也可手动起后端（调试用）：`cd backend && uv run uvicorn kate_cortex.main:app --port 1738`
+
+## 打包分发（Windows）
+
+```bash
+# 1. 后端 → onefile exe（jieba 词典 / sqlite-vec / sklearn 已收集）
+cd backend && uv run pyinstaller kate_cortex.spec --noconfirm
+
+# 2. 前端 + NSIS 安装包（国内网络需镜像环境变量，见 docs/IMPLEMENTATION_PLAN 阶段 5）
+cd frontend && pnpm build && pnpm exec electron-builder --win
+```
+
+产物：`frontend/release/Kate-Cortex-Setup-<version>.exe`（另有 `win-unpacked/` 免安装直跑）。
+打包版数据目录：`%USERPROFILE%\Kate-Cortex\vault`。
+
+## Claude Code 接入（MCP 服务端）
+
+```
+claude mcp add kate-cortex -s user -- uv run --project <backend目录> python -m kate_cortex.mcp_server
+```
+
+暴露 6 个工具：search_knowledge / get_entry / save_knowledge / list_collections /
+recall_memory / save_memory（详见 [DESIGN.md §15](./docs/DESIGN.md)）。
 
 ## 技术栈
 
 | 层 | 技术 |
 |---|---|
-| 桌面壳 | Tauri 2.0 |
+| 桌面壳 | Electron 39（electron-vite）+ Python sidecar（PyInstaller onefile） |
 | 前端 | React + TypeScript + Tailwind + CodeMirror；三维视图 three.js + react-three-fiber |
 | 后端 | Python 3.12 + FastAPI；三维投影 scikit-learn（t-SNE/PCA） |
-| 存储 | SQLite + sqlite-vec |
-| LLM | GLM / DeepSeek / 硅基流动 / 魔搭（OpenAI 兼容）；免费组合：glm-4.7-flash（智谱免费）· Qwen3-8B（硅基流动免费档）· 魔搭每日 2000 次；向量检索：GLM embedding-3 或硅基流动 bge-m3（免费） |
+| 存储 | SQLite + sqlite-vec（FTS5 + 向量混合检索） |
+| LLM | GLM / DeepSeek / 硅基流动 / 魔搭（OpenAI 兼容）；GLM 编程套餐（Anthropic 协议）；向量：GLM embedding-3 或硅基流动 bge-m3（免费） |
+| 协议 | MCP 客户端（Streamable HTTP）+ MCP 服务端（stdio） |
 
 详见 [设计文档](./docs/DESIGN.md)。
-
-## 开发（待实现）
-
-```bash
-# 后端
-cd backend && uv sync && uv run uvicorn kate_cortex.main:app --reload
-
-# 前端
-cd frontend && pnpm install && pnpm tauri dev
-```
 
 ## License
 

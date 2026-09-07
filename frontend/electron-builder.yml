@@ -1,7 +1,8 @@
-appId: com.electron.app
-productName: frontend
+appId: com.katecortex.app
+productName: Kate-Cortex
 directories:
   buildResources: build
+  output: release
 files:
   - '!**/.vscode/*'
   - '!src/*'
@@ -11,33 +12,26 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# Python 后端 exe（backend/dist/kate-cortex-server.exe，PyInstaller 产物）
+# → 安装包 resources/sidecar/，主进程经 process.resourcesPath 定位
+extraResources:
+  - from: ../backend/dist/kate-cortex-server.exe
+    to: sidecar/kate-cortex-server.exe
 win:
-  executableName: frontend
+  executableName: Kate-Cortex
+  target:
+    - target: nsis
+      arch:
+        - x64
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: Kate-Cortex-Setup-${version}.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
+  oneClick: false
+  allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
-mac:
-  entitlementsInherit: build/entitlements.mac.plist
-  extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
-dmg:
-  artifactName: ${name}-${version}.${ext}
-linux:
-  target:
-    - AppImage
-    - snap
-    - deb
-  maintainer: electronjs.org
-  category: Utility
-appImage:
-  artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+# 显式 generic 渠道：阻止 electron-builder 联网推断 GitHub 发布（离线构建）
 publish:
   provider: generic
   url: https://example.com/auto-updates

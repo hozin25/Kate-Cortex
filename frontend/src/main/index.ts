@@ -1,19 +1,28 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { startSidecar, type SidecarHandle } from './sidecar'
+
+let sidecar: SidecarHandle | null = null
 
 function createWindow(): void {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: 1280,
+    height: 820,
+    minWidth: 960,
+    minHeight: 640,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      // 后端端口与鉴权 token 经命令行传给 preload（DESIGN §2.2 / §9 本地鉴权）
+      additionalArguments: [
+        `--kate-port=${sidecar?.port ?? 1738}`,
+        `--kate-token=${sidecar?.token ?? ''}`
+      ]
     }
   })
 
@@ -26,8 +35,6 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -35,40 +42,60 @@ function createWindow(): void {
   }
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // Set app user model id for windows
-  electronApp.setAppUserModelId('com.electron')
+// 双开保护：第二实例直接退出，避免重复拉起 sidecar
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+}
 
-  // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
-  // see https://github.com/alex8088/electron-toolkit/tree/master/packages/utils
+app.whenReady().then(async () => {
+  electronApp.setAppUserModelId('com.katecortex.app')
+
+  app.on('second-instance', () => {
+    const win = BrowserWindow.getAllWindows()[0]
+    if (win) {
+      if (win.isMinimized()) win.restore()
+      win.focus()
+    }
+  })
+
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
 
-  // IPC test
-  ipcMain.on('ping', () => console.log('pong'))
+  // 启动时序：sidecar 就绪 → 再建窗口（避免白屏与连接拒绝）
+  try {
+    sidecar = await startSidecar()
+  } catch (err) {
+    dialog.showErrorBox(
+      'Kate-Cortex 后端启动失败',
+      `${err instanceof Error ? err.message : String(err)}\n\n请重试；若持续失败请查看日志。`
+    )
+    app.quit()
+    return
+  }
 
   createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
+// 退出清理：树杀后端（先等它善终，最多 5s）
+app.on('will-quit', (event) => {
+  if (!sidecar) return
+  event.preventDefault()
+  const handle = sidecar
+  sidecar = null
+  const timer = setTimeout(() => app.exit(0), 5000)
+  void handle.stop().finally(() => {
+    clearTimeout(timer)
+    app.exit(0)
+  })
+})

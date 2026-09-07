@@ -391,6 +391,33 @@ security.py 首版有 ctypes 函数取用 bug（getter 当函数调），被全�
 
 ---
 
+## 阶段 5：Electron 桥接 + 打包（2026-09-07 完成）
+
+**目标**：出可分发的 Windows 安装包（P0 最后一项，M5 里程碑）。
+
+| # | 任务 | 结果 |
+|---|---|---|
+| 5.1 | `src/main/sidecar.ts` | spawn（dev: `uv run uvicorn`，prod: resources/sidecar/kate-cortex-server.exe）、health 轮询（就绪才建窗口）、端口探测（本应用复用/他人避让 1738+）、**退出树杀**（taskkill /T /F，uv 与 onefile 都有子进程）、单实例锁 |
+| 5.2 | `src/main/index.ts` 重写 | 启动时序 sidecar→窗口；**token 生成注入 KATE_API_TOKEN**（§9 鉴权闭环）；preload 经 additionalArguments 传端口+token，renderer client/sse/图片 URL 全部改读 `window.api.kateRuntime`（纯 vite 环境回落默认值，测试不受影响） |
+| 5.4 | 打包 | `backend/kate_cortex.spec`（jieba 词典 + sqlite-vec 原生库 collect_all，UPX 关闭防杀软误报）→ 44MB onefile exe；electron-builder：appId com.katecortex.app、extraResources 挂 sidecar、NSIS 可选安装目录 |
+| 5.5 | 冒烟 | dev：自动拉起/401 鉴权/优雅退出零残留 ✓；打包 exe：health/token/打包 vault（%USERPROFILE%\Kate-Cortex\vault）/sqlite-vec 冻结加载 ✓；解包版全流程 + 优雅退出 ✓；安装包 `Kate-Cortex-Setup-1.0.0.exe`（212MB）✓ |
+
+**执行记录**：
+- 产物：`frontend/release/Kate-Cortex-Setup-1.0.0.exe` + `release/win-unpacked/`（免安装直跑）
+- 踩坑 1：`uvicorn.run("kate_cortex.main:app")` 字符串导入 PyInstaller 静态分析追不到 →
+  改为直接 import app 对象（run_server.py 注释存档）
+- 踩坑 2：electron-builder 首次构建 GitHub 工具链 600s 超时 → npmmirror 镜像
+  （ELECTRON_MIRROR / ELECTRON_BUILDER_BINARIES_MIRROR）；设置 repository 字段会触发
+  联网推断 GitHub 发布渠道，须配 generic publish 显式阻断
+- 踩坑 3：PowerShell Set-Content 写 package.json 带 UTF-8 BOM 令 JSON.parse 崩溃
+- 已知边界：打包版 vault 与 dev vault 是两个目录（前者 %USERPROFILE%\Kate-Cortex\vault）；
+  MCP server 的 exe 版（kate-cortex-mcp.exe）未打包，Claude Code 接入仍走 `uv run`；
+  应用图标沿用模板（后续换 brand 图标即可）；212MB 体积主因 Electron+Python+sklearn 双运行时
+
+**提交点**：`feat: electron sidecar integration and packaging` → tag `v0.1.0`
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |
