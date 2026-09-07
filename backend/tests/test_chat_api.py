@@ -117,6 +117,22 @@ class TestSessionApi:
         assert glm_models["glm-4.7-flash"]["free"] is True
         assert glm_models["glm-4.5"]["free"] is False
 
+    def test_models_catalog_marks_vision(self, client):
+        """vision 标注与发图拦截同源：glm-coding 多模态为 True，
+        含 v 版本号的 DeepSeek-V3 不能被误标为视觉（旧判定回归）"""
+        resp = client.get("/api/models")
+        providers = {p["name"]: p for p in resp.json()["providers"]}
+
+        glm_coding = {m["model"]: m for m in providers["glm-coding"]["models"]}
+        assert all(m["vision"] is True for m in glm_coding.values())
+
+        modelscope = {m["model"]: m for m in providers["modelscope"]["models"]}
+        assert modelscope["deepseek-ai/DeepSeek-V3"]["vision"] is False
+        assert modelscope["Qwen/Qwen3-235B-A22B-Instruct-2507"]["vision"] is False
+
+        glm = {m["model"]: m for m in providers["glm"]["models"]}
+        assert all(m["vision"] is False for m in glm.values())
+
     def test_messages_endpoint(self, client):
         session = client.post(
             "/api/chat/sessions", json={"provider": "deepseek", "model": "deepseek-chat"}

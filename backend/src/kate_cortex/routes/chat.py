@@ -132,7 +132,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
                 status_code=400,
                 detail=(
                     f"当前模型 {session.provider}/{session.model} 不支持图片，"
-                    "请切换到 GLM 编程套餐（glm-5.3）或 GLM-4V 系列模型"
+                    "请切换到带「视觉」标注的模型（如 GLM 编程套餐 glm-5.3）"
                 ),
             )
         try:

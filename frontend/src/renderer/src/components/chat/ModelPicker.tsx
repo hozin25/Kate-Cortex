@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronDown, Cpu } from 'lucide-react'
-import { api } from '@renderer/api/client'
 import { cn } from '@renderer/lib/utils'
 import type { ChatSession, ProviderCatalog, ProviderName } from '@renderer/types'
 
@@ -25,27 +24,20 @@ function shortModel(catalog: ProviderCatalog[] | null, session: ChatSession): st
 
 interface ModelPickerProps {
   session: ChatSession
+  /** ChatPage 预取的 /api/models 目录（null = 加载中） */
+  catalog: ProviderCatalog[] | null
   disabled?: boolean
   onSwitch: (provider: ProviderName, model: string) => void
 }
 
 export function ModelPicker({
   session,
+  catalog,
   disabled = false,
   onSwitch
 }: ModelPickerProps): React.JSX.Element {
   const [open, setOpen] = useState(false)
-  const [catalog, setCatalog] = useState<ProviderCatalog[] | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
-
-  // 打开时拉取目录（含各 provider 的 key 配置状态，本地请求开销可忽略）
-  useEffect(() => {
-    if (!open || catalog) return
-    api
-      .get<{ providers: ProviderCatalog[] }>('/models')
-      .then((r) => setCatalog(r.providers))
-      .catch(() => setCatalog([]))
-  }, [open, catalog])
 
   // 点击组件外部关闭弹层
   useEffect(() => {
@@ -141,6 +133,19 @@ export function ModelPicker({
                           )}
                         >
                           {freeNote(group.name)}
+                        </span>
+                      )}
+                      {m.vision && (
+                        <span
+                          className={cn(
+                            'shrink-0 rounded px-1 py-px text-[9px]',
+                            usable
+                              ? 'bg-violet-400/15 text-violet-300'
+                              : 'bg-white/[0.04] text-zinc-600'
+                          )}
+                          title="支持图片输入"
+                        >
+                          视觉
                         </span>
                       )}
                       {active && <Check className="size-3.5 shrink-0 text-aurora-cyan" />}

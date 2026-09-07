@@ -6,6 +6,8 @@ export interface ModelCatalogItem {
   model: string
   label: string
   free: boolean
+  /** 能否接收图片（与后端发图拦截同源计算），缺失按未知处理不拦 */
+  vision?: boolean
 }
 
 export interface ProviderCatalog {

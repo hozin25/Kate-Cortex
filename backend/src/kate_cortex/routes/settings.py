@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..models import ProviderTestIn, SettingsOut, SettingsUpdate
-from ..providers import MODEL_CATALOG, REGISTRY
+from ..providers import MODEL_CATALOG, REGISTRY, vision_supported
 from ..providers.base import Done, ProviderError, TextDelta
 
 router = APIRouter(tags=["settings"])
@@ -10,14 +10,18 @@ router = APIRouter(tags=["settings"])
 
 @router.get("/models")
 def list_models(request: Request):
-    """对话内模型切换的目录：按注册表顺序给出各 provider 的模型与 key 配置状态"""
+    """对话内模型切换的目录：按注册表顺序给出各 provider 的模型与 key 配置
+    状态；vision 由 vision_supported 现算（与发图拦截同一判定）"""
     keys = request.app.state.settings_service.get_all()["provider_keys"]
     return {
         "providers": [
             {
                 "name": name,
                 "has_key": bool(keys.get(name)),
-                "models": MODEL_CATALOG.get(name, []),
+                "models": [
+                    {**m, "vision": vision_supported(name, m["model"])}
+                    for m in MODEL_CATALOG.get(name, [])
+                ],
             }
             for name in REGISTRY
         ]

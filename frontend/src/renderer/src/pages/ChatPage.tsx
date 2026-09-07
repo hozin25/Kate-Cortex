@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { MessagesSquare } from 'lucide-react'
+import { api } from '@renderer/api/client'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
 import { ModelPicker } from '@renderer/components/chat/ModelPicker'
@@ -13,6 +14,7 @@ import { GradientText } from '@renderer/components/common/Glass'
 import { useChatStore } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { toast } from '@renderer/stores/toast'
+import type { ProviderCatalog } from '@renderer/types'
 
 export function ChatPage(): React.JSX.Element {
   const store = useChatStore()
@@ -31,7 +33,25 @@ export function ChatPage(): React.JSX.Element {
   const ragEnabled = store.ragEnabled
   const settings = useSettingsStore((s) => s.settings)
   const currentSession = store.sessions.find((s) => s.id === currentId) ?? null
+  const [catalog, setCatalog] = useState<ProviderCatalog[] | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    // 模型目录（含视觉能力标注）供切换器与图片门控共用
+    api
+      .get<{ providers: ProviderCatalog[] }>('/models')
+      .then((r) => setCatalog(r.providers))
+      .catch(() => setCatalog([]))
+  }, [])
+
+  // 目录里当前模型的视觉能力；目录外的自定义模型未知 → null（不拦，后端 400 兜底）
+  const visionSupported = useMemo(() => {
+    if (!currentSession) return null
+    const hit = catalog
+      ?.find((p) => p.name === currentSession.provider)
+      ?.models.find((m) => m.model === currentSession.model)
+    return hit ? (hit.vision ?? null) : null
+  }, [catalog, currentSession])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -73,6 +93,7 @@ export function ChatPage(): React.JSX.Element {
           {currentSession && (
             <ModelPicker
               session={currentSession}
+              catalog={catalog}
               disabled={streaming}
               onSwitch={(p, m) =>
                 store.switchModel(p, m).catch((err) =>
@@ -164,6 +185,7 @@ export function ChatPage(): React.JSX.Element {
       <div className="px-6 pb-4 pt-2">
         <ChatInput
           streaming={streaming}
+          visionSupported={visionSupported}
           onSend={(c, imgs) => void store.sendMessage(c, imgs)}
           onStop={store.stopStreaming}
         />

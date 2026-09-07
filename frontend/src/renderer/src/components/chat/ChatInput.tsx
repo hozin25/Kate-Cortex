@@ -11,13 +11,23 @@ interface ChatInputProps {
   streaming: boolean
   onSend: (content: string, images?: string[]) => void
   onStop: () => void
+  /** 当前模型能否接收图片；null/undefined = 未知（不拦，交后端 400 兜底） */
+  visionSupported?: boolean | null
 }
 
-export function ChatInput({ streaming, onSend, onStop }: ChatInputProps): React.JSX.Element {
+const VISION_HINT = '当前模型不支持图片，请先在右上角切换到带「视觉」标注的模型'
+
+export function ChatInput({
+  streaming,
+  onSend,
+  onStop,
+  visionSupported = null
+}: ChatInputProps): React.JSX.Element {
   const ref = useRef<HTMLTextAreaElement>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const [images, setImages] = useState<string[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const noVision = visionSupported === false
 
   const readAsDataUrl = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -29,6 +39,10 @@ export function ChatInput({ streaming, onSend, onStop }: ChatInputProps): React.
 
   const addFiles = async (files: FileList | File[] | null): Promise<void> => {
     if (!files) return
+    if (noVision) {
+      toast.info(VISION_HINT)
+      return
+    }
     const incoming = Array.from(files).filter((f) => ACCEPTED_TYPES.includes(f.type))
     if (incoming.length === 0) {
       if (Array.from(files).length > 0) toast.error('仅支持 png / jpeg / webp / gif 图片')
@@ -70,6 +84,10 @@ export function ChatInput({ streaming, onSend, onStop }: ChatInputProps): React.
     if (!el) return
     const content = el.value.trim()
     if ((!content && images.length === 0) || streaming) return
+    if (noVision && images.length > 0) {
+      toast.info(VISION_HINT)
+      return
+    }
     onSend(content, images)
     el.value = ''
     el.style.height = 'auto'
@@ -132,10 +150,10 @@ export function ChatInput({ streaming, onSend, onStop }: ChatInputProps): React.
         />
         <button
           onClick={() => fileRef.current?.click()}
-          disabled={streaming || images.length >= MAX_IMAGES}
+          disabled={streaming || images.length >= MAX_IMAGES || noVision}
           className="grid size-9 shrink-0 place-items-center rounded-xl text-zinc-400 transition hover:bg-white/[0.06] hover:text-zinc-200 disabled:opacity-40"
           aria-label="添加图片"
-          title="添加图片（也可直接粘贴 / 拖入）"
+          title={noVision ? VISION_HINT : '添加图片（也可直接粘贴 / 拖入）'}
         >
           <ImagePlus className="size-4" />
         </button>

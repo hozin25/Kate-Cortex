@@ -292,8 +292,9 @@ POST   /api/chat/sessions/:id/chat      发消息 → SSE 流式响应
 
 # 对话内模型切换（2026-09-07 增补）
 GET    /api/models                      模型目录：各 provider 的可选模型
-                                         （MODEL_CATALOG，free 标注免费档）+ has_key，
-                                         供聊天头部 ModelPicker 弹层渲染
+                                         （MODEL_CATALOG，free 标注免费档）+ has_key
+                                         + vision（vision_supported 现算，与发图拦截
+                                         同源），供 ModelPicker 弹层与输入框图片门控
 
 # 对话管理（2026-09-06 增补）
 POST   /api/chat/sessions/:id/regenerate                    重新生成：删最后

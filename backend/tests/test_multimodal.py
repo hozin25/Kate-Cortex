@@ -94,6 +94,13 @@ class TestVisionSupport:
 
     def test_open_source_providers_by_model_name(self):
         assert vision_supported("siliconflow", "Qwen/Qwen3-8B") is False
+        assert vision_supported("siliconflow", "Qwen/Qwen2.5-VL-72B-Instruct") is True
+        assert vision_supported("modelscope", "Qwen/Qwen3-VL-8B-Instruct") is True
+
+    def test_version_number_with_v_is_not_vision(self):
+        """回归：DeepSeek-V3 含 v 但非视觉，旧「含 v 即视觉」判定曾误放行"""
+        assert vision_supported("modelscope", "deepseek-ai/DeepSeek-V3") is False
+        assert vision_supported("siliconflow", "deepseek-ai/DeepSeek-V3.1") is False
 
 
 class TestAnthropicImageBlocks:

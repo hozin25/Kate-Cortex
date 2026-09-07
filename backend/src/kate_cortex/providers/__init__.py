@@ -1,5 +1,7 @@
 """Provider 注册表与工厂：按 settings 构建 provider 实例"""
 
+import re
+
 from .base import BaseProvider, ProviderError
 from .deepseek import DeepSeekProvider
 from .glm import GLMProvider
@@ -90,12 +92,21 @@ def create_provider(name: str, api_key: str, model: str) -> BaseProvider:
     return REGISTRY[name](api_key=api_key, model=model)
 
 
+# 视觉模型的命名段：可选版本号 + v / vl 收尾（4v、4.5v、vl），精确匹配
+# 避免 DeepSeek-V3 这类「含 v 但非视觉」的误判
+_VISION_SEGMENT_RE = re.compile(r"(\d+(\.\d+)?)?v(l)?")
+
+
 def vision_supported(provider: str, model: str) -> bool:
-    """该 provider/模型能否接收图片。glm-coding 的 glm-5.3 原生多模态；
-    其余按模型命名判断——名称分段含独立 v/VL 段（glm-4v-plus、Qwen-VL…）
-    视为视觉模型，deepseek-chat 与纯文本档（glm-4-flash / Qwen3-8B）不支持"""
+    """该 provider/模型能否接收图片。glm-coding 的 glm-5.x 原生多模态；
+    deepseek 纯文本；其余按模型命名判断——glm-4v-plus、Qwen-…-VL-…、
+    glm-4.5v 等含独立 v/vl 段视为视觉模型，v3 之类的版本号不算"""
     if provider == "glm-coding":
         return True
     if provider == "deepseek":
         return False
-    return any("v" in segment for segment in model.lower().split("-"))
+    model_id = model.split("/")[-1]
+    return any(
+        _VISION_SEGMENT_RE.fullmatch(segment)
+        for segment in model_id.lower().split("-")
+    )
