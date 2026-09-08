@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "cd frontend && ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile",
-  "buildCommand": "cd frontend && pnpm run build:web",
+  "installCommand": "if [ ! -d frontend ]; then cd ..; fi; cd frontend && ELECTRON_SKIP_BINARY_DOWNLOAD=1 pnpm install --frozen-lockfile",
+  "buildCommand": "SUB=0; if [ ! -d frontend ]; then SUB=1; cd ..; fi; cd frontend && pnpm run build:web && mkdir -p api backend/src && cp -r ../api/. api/ && cp -r ../backend/src/. backend/src/ && if [ \"$SUB\" = \"1\" ]; then mkdir -p frontend && cp -r dist frontend/; fi",
   "outputDirectory": "frontend/dist",
   "functions": {
     "api/index.py": {

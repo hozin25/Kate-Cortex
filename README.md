@@ -53,6 +53,11 @@ cd frontend && pnpm build && pnpm exec electron-builder --win
 前端构建为静态站，后端以 Python serverless 函数（`api/index.py`）同仓部署：
 `vercel.json` 把 `/api/*` 重写到函数，前端 API 地址默认同源，零额外配置。
 
+> **导入提示**：Vercel 导入向导可能把 Root Directory 自动填成 `frontend`
+> （它检测到 frontend/ 是 Vite 项目）。构建命令已做自适应，两种设置都能构建；
+> 若构建或 `/api` 仍有异常，到 Project Settings → General 把 Root Directory
+> 清空为仓库根后 Redeploy 即可。
+
 注意这是**在线试用形态**，与本地优先的设计有本质差异：
 
 - serverless 无持久盘：数据落在函数实例的 `/tmp`，实例回收/冷启动后清空，
