@@ -103,6 +103,10 @@ def save_memory(storage, args: dict, conversation_id: str) -> dict:
             importance=importance,
         )
     else:
+        # 保存查重（IMP-8）：向量检索「记忆」合集，cos 相似度 ≥0.80 疑似重复。
+        # 保守决策：不自动合并，返回 duplicate_hint 提示模型——若是更新，
+        # 带 replaces_entry_id 重试即可覆盖
+        duplicate_hint = _duplicate_hint(storage, args, keywords)
         entry = storage.create_entry(
             title=args["title"],
             source="chat",
@@ -112,13 +116,47 @@ def save_memory(storage, args: dict, conversation_id: str) -> dict:
             keywords=keywords,
             importance=importance,
         )
-    return {
+    result = {
         "entry_id": entry.id,
         "slug": entry.slug,
         "title": entry.title,
         "keywords": entry.keywords,
         "replaced": bool(replaces),
     }
+    if not replaces and duplicate_hint:
+        result["duplicate_hint"] = duplicate_hint
+        result["note"] = (
+            f"疑似与已有记忆《{duplicate_hint['title']}》重复"
+            f"（相似度 {duplicate_hint['similarity']:.2f}）。"
+            "若本次是对该记忆的更新，请带 replaces_entry_id 重新调用以覆盖；"
+            "确为不同事实则无需处理。"
+        )
+    return result
+
+
+DUPLICATE_SIMILARITY = 0.80
+
+
+def _duplicate_hint(storage, args: dict, keywords: list[str]) -> dict | None:
+    if storage.vectors is None:
+        return None
+    text = " ".join([args.get("title", ""), args.get("content", ""), *keywords])
+    try:
+        hits = storage.vectors.query(text, limit=3)
+    except Exception:
+        return None  # 嵌入失败不阻断保存
+    for hit in hits:
+        entry = storage.get_entry(hit.entry_id)
+        if entry is None or MEMORY_COLLECTION not in entry.collections:
+            continue
+        similarity = 1.0 - hit.distance
+        if similarity >= DUPLICATE_SIMILARITY:
+            return {
+                "entry_id": entry.id,
+                "title": entry.title,
+                "similarity": round(similarity, 3),
+            }
+    return None
 
 
 def recall_memory(storage, args: dict) -> dict:

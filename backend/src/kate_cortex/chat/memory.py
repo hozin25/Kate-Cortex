@@ -9,6 +9,10 @@
 from dataclasses import dataclass
 from datetime import datetime
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 MEMORY_COLLECTION = "记忆"
 LIST_LIMIT = 500  # 个人规模上限，超出按 created_at 截断（list_entries 默认排序）
 RESIDENT_LIMIT = 5
@@ -20,6 +24,7 @@ KEYWORD_WEIGHT = 3.0
 IMPORTANCE_WEIGHT = 0.5
 WEEK_BONUS = 2.0
 MONTH_BONUS = 1.0
+RRF_K = 60  # 关键词/向量双通道排名融合常数（同 chat/rag.py）
 
 
 @dataclass
@@ -72,7 +77,11 @@ def recall(
     storage, query_keywords: list[str], limit: int = RECALL_LIMIT
 ) -> list[MemorySnippet]:
     """打分检索：只有与检索词产生关联的记忆才返回（零重合不返回），
-    排序兼顾关键词重合数、重要性与新近度"""
+    排序兼顾关键词重合数、重要性与新近度。
+
+    向量可用时增加语义通道（IMP-8）：检索词拼接文本嵌入后按「记忆」合集
+    过滤，与关键词排名 RRF 融合——零词面重合的跨话题召回（问「出去玩」
+    想起「感冒」）不再只赌 keywords。"""
     terms = [t.strip() for t in query_keywords if t and t.strip()]
     if not terms:
         return []
@@ -83,7 +92,47 @@ def recall(
         if (score := _score(m, terms, now)) > 0
     ]
     scored.sort(key=lambda pair: pair[0], reverse=True)
-    return [m for _, m in scored[:limit]]
+
+    vector_ranked = _vector_channel(storage, terms)
+    if not vector_ranked:
+        return [m for _, m in scored[:limit]]
+
+    # RRF 融合（同 chat/rag.py 思路）：关键词与向量两路排名倒数求和
+    scores: dict[str, float] = {}
+    for rank, (_, m) in enumerate(scored):
+        scores[m.entry_id] = scores.get(m.entry_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+    for rank, m in enumerate(vector_ranked):
+        scores[m.entry_id] = scores.get(m.entry_id, 0.0) + 1.0 / (RRF_K + rank + 1)
+    by_id = {m.entry_id: m for m in list_memories(storage)}
+    fused = sorted(scores, key=scores.get, reverse=True)
+    return [by_id[entry_id] for entry_id in fused[:limit] if entry_id in by_id]
+
+
+def _vector_channel(storage, terms: list[str], limit: int = 8) -> list[MemorySnippet]:
+    """向量语义通道：嵌入检索词 → 过滤出「记忆」合集条目。失败静默返回空"""
+    if storage.vectors is None:
+        return []
+    try:
+        hits = storage.vectors.query(" ".join(terms), limit=limit)
+    except Exception as exc:
+        logger.warning("记忆向量检索失败，退化为纯关键词打分: %s", exc)
+        return []
+    memories = []
+    for hit in hits:
+        entry = storage.get_entry(hit.entry_id)
+        if entry is None or MEMORY_COLLECTION not in entry.collections:
+            continue
+        memories.append(
+            MemorySnippet(
+                entry_id=entry.id,
+                title=entry.title,
+                content=entry.content.strip(),
+                keywords=entry.keywords,
+                importance=entry.importance or 3,
+                created_at=entry.created_at,
+            )
+        )
+    return memories
 
 
 def _score(memory: MemorySnippet, terms: list[str], now: datetime) -> float:
