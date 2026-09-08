@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { startSidecar, type SidecarHandle } from './sidecar'
+import { scheduleUpdateCheck } from './update-check'
 
 let sidecar: SidecarHandle | null = null
 
@@ -75,6 +76,9 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+
+  // 启动 10s 后做一次轻量更新检查（不阻塞首屏；失败静默）
+  scheduleUpdateCheck()
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
