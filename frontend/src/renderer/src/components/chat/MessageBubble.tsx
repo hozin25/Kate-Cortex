@@ -12,6 +12,8 @@ interface MessageBubbleProps {
   message: ChatMessage
   isLast?: boolean
   streaming?: boolean
+  /** 对话内搜索命中时整条高亮边框（IMP-6） */
+  highlight?: boolean
   onRegenerate?: () => void
   onEdit?: (content: string) => void
   onDelete?: () => void
@@ -27,6 +29,7 @@ export function MessageBubble({
   message,
   isLast = false,
   streaming = false,
+  highlight = false,
   onRegenerate,
   onEdit,
   onDelete
@@ -116,7 +119,12 @@ export function MessageBubble({
               icon={<Trash2 className="size-3.5" />}
             />
           </div>
-          <div className="max-w-full rounded-2xl rounded-br-md border border-aurora-indigo/25 bg-aurora-indigo/15 px-4 py-2.5 text-sm leading-7 text-zinc-100">
+          <div
+            className={cn(
+              'max-w-full rounded-2xl rounded-br-md border border-aurora-indigo/25 bg-aurora-indigo/15 px-4 py-2.5 text-sm leading-7 text-zinc-100',
+              highlight && 'ring-1 ring-aurora-cyan/50'
+            )}
+          >
             {hasImages ? (
               <MarkdownView content={message.content} />
             ) : (
@@ -157,7 +165,12 @@ export function MessageBubble({
         )}
       </div>
       <div className="flex max-w-[92%] items-start gap-1.5">
-        <div className="max-w-full rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] px-4 py-2.5">
+        <div
+          className={cn(
+            'max-w-full rounded-2xl rounded-bl-md border border-white/[0.07] bg-white/[0.035] px-4 py-2.5',
+            highlight && 'ring-1 ring-aurora-cyan/50'
+          )}
+        >
           <MarkdownView content={message.content || '（无文本内容）'} />
         </div>
         <div className="flex shrink-0 items-center gap-0.5 pt-1 opacity-0 transition group-hover:opacity-100">

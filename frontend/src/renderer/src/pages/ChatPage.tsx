@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { MessagesSquare } from 'lucide-react'
+import { MessagesSquare, Search } from 'lucide-react'
 import { api } from '@renderer/api/client'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
@@ -31,6 +31,7 @@ export function ChatPage(): React.JSX.Element {
     error
   } = store
   const ragEnabled = store.ragEnabled
+  const [search, setSearch] = useState('')
   const settings = useSettingsStore((s) => s.settings)
   const currentSession = store.sessions.find((s) => s.id === currentId) ?? null
   const [catalog, setCatalog] = useState<ProviderCatalog[] | null>(null)
@@ -52,6 +53,12 @@ export function ChatPage(): React.JSX.Element {
       ?.models.find((m) => m.model === currentSession.model)
     return hit ? (hit.vision ?? null) : null
   }, [catalog, currentSession])
+
+  // 对话内搜索（IMP-6）：仅命中消息显示，整条高亮 + 计数
+  const keyword = search.trim().toLowerCase()
+  const visibleMessages = keyword
+    ? messages.filter((m) => m.content.toLowerCase().includes(keyword))
+    : messages
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
@@ -90,6 +97,15 @@ export function ChatPage(): React.JSX.Element {
           </GradientText>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          <div className="glass flex items-center gap-1.5 rounded-xl px-2.5 py-1.5">
+            <Search className="size-3.5 shrink-0 text-zinc-500" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="搜索本会话…"
+              className="w-32 bg-transparent text-xs text-zinc-200 outline-none placeholder:text-zinc-600"
+            />
+          </div>
           {currentSession && (
             <ModelPicker
               session={currentSession}
@@ -111,17 +127,33 @@ export function ChatPage(): React.JSX.Element {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 py-4">
-          {messages.map((m, i) => (
+          {keyword && (
+            <p className="text-center text-xs text-zinc-500">
+              命中 {visibleMessages.length} / {messages.length} 条消息
+              <button
+                onClick={() => setSearch('')}
+                className="ml-2 underline decoration-dotted hover:text-zinc-300"
+              >
+                清空
+              </button>
+            </p>
+          )}
+          {visibleMessages.length === 0 && keyword ? (
+            <p className="py-8 text-center text-sm text-zinc-500">本会话没有命中「{search.trim()}」的消息</p>
+          ) : (
+            visibleMessages.map((m, i) => (
             <MessageBubble
               key={m.id}
               message={m}
               isLast={i === messages.length - 1}
+              highlight={Boolean(keyword)}
               streaming={streaming}
               onRegenerate={() => void store.regenerate()}
               onEdit={(content) => void store.editMessage(m.id, content)}
               onDelete={() => void store.deleteMessage(m.id)}
             />
-          ))}
+            ))
+          )}
 
           {streaming && <StreamingBubble text={streamText} />}
 
