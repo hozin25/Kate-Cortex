@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ImagePlus, Send, Square, X } from 'lucide-react'
 import { cn } from '@renderer/lib/utils'
+import { compressImage } from '@renderer/lib/imageCompress'
 import { toast } from '@renderer/stores/toast'
 
 const MAX_IMAGES = 4
@@ -29,14 +30,6 @@ export function ChatInput({
   const [dragOver, setDragOver] = useState(false)
   const noVision = visionSupported === false
 
-  const readAsDataUrl = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(file)
-    })
-
   const addFiles = async (files: FileList | File[] | null): Promise<void> => {
     if (!files) return
     if (noVision) {
@@ -57,7 +50,7 @@ export function ChatInput({
       return
     }
     try {
-      const urls = await Promise.all(incoming.map(readAsDataUrl))
+      const urls = await Promise.all(incoming.map(compressImage))
       setImages([...images, ...urls])
     } catch {
       toast.error('图片读取失败')
