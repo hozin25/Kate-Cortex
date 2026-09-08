@@ -418,6 +418,28 @@ security.py 首版有 ctypes 函数取用 bug（getter 当函数调），被全�
 
 ---
 
+## 阶段 13：改进规划 IMP-1~10（2026-09-08 完成）
+
+**目标**：按 docs/IMPROVEMENT_PLAN.md 实施第一梯队四件套 + 第二梯队六项。
+
+| # | 项 | 结果 |
+|---|---|---|
+| IMP-1 | 发送前图片压缩 | `lib/imageCompress.ts`：最长边 ≤1568px、JPEG q0.85，gif/小图透传；ChatInput 接入零后端改动 |
+| IMP-2 | Ctrl+K 全局搜索 | GlobalShortcuts 加 Ctrl+K → 跳知识库；libraryStore.focusSearchTick 信号聚焦搜索框 |
+| IMP-3 | 亮色主题 | `--kc-*` CSS 变量 + `html[data-theme="light"]`（含 zinc/white/ink 工具类集中重映射）；设置页「外观」切换，localStorage `kc-theme`，渲染前应用防闪 |
+| IMP-4 | 应用图标 | `scripts/gen-icon.mjs` 纯 Node 生成 512px 品牌图标（深底圆角 + indigo→violet 渐变 + K），写入 build/ 与 resources/ |
+| IMP-5 | Obsidian 导入器 | `importer.py::import_obsidian`：tags→合集、`[[Name]]`→`[[slug]]`（别名保留）、`![[pic]]`→附件拷贝重写、扩展 frontmatter 透传、dry_run；`POST /api/import/obsidian`；MarkdownView 支持 `[[slug]]` 双链可点 |
+| IMP-6 | 对话内搜索 | ChatPage 头部搜索框：客户端过滤 + 命中整条高亮边框 + 计数，清空恢复 |
+| IMP-7 | 长对话摘要 | schema v6（conversations.summary/summarized_until）；`chat/summarizer.py` 增量摘要（>30 轮触发、会话内缓存、失败降级硬截断）；「对话背景」注入 system prompt |
+| IMP-8 | 记忆去重+向量召回 | save_memory 落库前向量查重（cos ≥0.80 → duplicate_hint 提示 replaces_entry_id）；recall 增加向量通道与关键词排名 RRF 融合 |
+| IMP-9 | 自动更新检查 | `main/update-check.ts`：启动 10s 后查 GitHub Releases，dialog 提示 + 打开发布页；8s 超时静默、KATE_UPDATE_CHECK=0 可关 |
+| IMP-10 | vault 迁移 | `importer.py::import_vault`：md/附件合并拷贝（id 幂等、slug 冲突 -2）、DPAPI 解密合并缺失 provider key；`POST /api/import/vault`；设置页「数据导入」区块（预览/执行两步） |
+
+- 收尾时后端 372 测试 / 前端 typecheck+lint+34 测试全绿，MCP 冒烟（tests/smoke_mcp_server.py）通过
+- 提交点：每项独立提交（文案见 IMPROVEMENT_PLAN.md 各节）；IMP-5 与 IMP-10 共用导入底座，落在同一提交
+
+---
+
 ## 里程碑
 
 | 里程碑 | 时点 | 意义 |
