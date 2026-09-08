@@ -72,29 +72,76 @@ body,
   height: 100%;
 }
 
-body {
-  @apply bg-ink-950 text-zinc-200 font-sans antialiased overflow-hidden;
+/* ── 主题变量：暗色为默认，html[data-theme='light'] 覆盖 ── */
+:root {
+  --kc-bg: oklch(0.125 0.01 280);
+  --kc-bg-image:
+    radial-gradient(52rem 36rem at 12% 8%, oklch(0.35 0.16 278 / 0.34), transparent 60%),
+    radial-gradient(44rem 30rem at 88% 92%, oklch(0.4 0.12 205 / 0.22), transparent 62%),
+    radial-gradient(38rem 34rem at 70% 18%, oklch(0.38 0.14 305 / 0.16), transparent 65%);
+  --kc-bg-image-drift:
+    radial-gradient(30rem 22rem at 30% 60%, oklch(0.45 0.15 210 / 0.1), transparent 70%),
+    radial-gradient(26rem 20rem at 75% 40%, oklch(0.5 0.18 285 / 0.12), transparent 70%);
+  --kc-glass-bg: rgb(255 255 255 / 0.045);
+  --kc-glass-border: rgb(255 255 255 / 0.1);
+  --kc-glass-deep-bg: rgb(255 255 255 / 0.03);
+  --kc-glass-deep-border: rgb(255 255 255 / 0.07);
+  --kc-glass-inset: rgb(255 255 255 / 0.06);
+  --kc-glass-shadow: 0 8px 32px -12px rgb(0 0 0 / 0.55);
+  --kc-scroll-thumb: rgb(255 255 255 / 0.12);
+  --kc-scroll-thumb-hover: rgb(255 255 255 / 0.2);
+  --kc-gradient-ring-bg: linear-gradient(
+    135deg,
+    oklch(0.6 0.19 280 / 0.6),
+    oklch(0.72 0.14 200 / 0.45)
+  );
+  --kc-ring-inner-bg: oklch(0.17 0.012 280 / 0.95);
 }
 
-/* ── 深空背景：极光光晕 + 细噪点 ── */
+html[data-theme='light'] {
+  --kc-bg: oklch(0.975 0.005 280);
+  --kc-bg-image:
+    radial-gradient(52rem 36rem at 12% 8%, oklch(0.85 0.09 278 / 0.35), transparent 60%),
+    radial-gradient(44rem 30rem at 88% 92%, oklch(0.88 0.07 205 / 0.3), transparent 62%),
+    radial-gradient(38rem 34rem at 70% 18%, oklch(0.86 0.08 305 / 0.22), transparent 65%);
+  --kc-bg-image-drift:
+    radial-gradient(30rem 22rem at 30% 60%, oklch(0.88 0.08 210 / 0.16), transparent 70%),
+    radial-gradient(26rem 20rem at 75% 40%, oklch(0.85 0.1 285 / 0.18), transparent 70%);
+  --kc-glass-bg: rgb(255 255 255 / 0.66);
+  --kc-glass-border: rgb(15 15 25 / 0.1);
+  --kc-glass-deep-bg: rgb(255 255 255 / 0.5);
+  --kc-glass-deep-border: rgb(15 15 25 / 0.08);
+  --kc-glass-inset: rgb(255 255 255 / 0.7);
+  --kc-glass-shadow: 0 8px 32px -12px rgb(30 30 60 / 0.18);
+  --kc-scroll-thumb: rgb(0 0 0 / 0.18);
+  --kc-scroll-thumb-hover: rgb(0 0 0 / 0.3);
+  --kc-gradient-ring-bg: linear-gradient(
+    135deg,
+    oklch(0.6 0.19 280 / 0.5),
+    oklch(0.72 0.14 200 / 0.4)
+  );
+  --kc-ring-inner-bg: rgb(255 255 255 / 0.92);
+}
+
+body {
+  background: var(--kc-bg);
+  color: var(--kc-text);
+  @apply font-sans antialiased overflow-hidden;
+}
+
+/* ── 深空背景：极光光晕 + 细噪点（亮色为浅色渐变） ── */
 .space-bg {
   position: fixed;
   inset: 0;
   z-index: -2;
-  background:
-    radial-gradient(52rem 36rem at 12% 8%, oklch(0.35 0.16 278 / 0.34), transparent 60%),
-    radial-gradient(44rem 30rem at 88% 92%, oklch(0.4 0.12 205 / 0.22), transparent 62%),
-    radial-gradient(38rem 34rem at 70% 18%, oklch(0.38 0.14 305 / 0.16), transparent 65%),
-    oklch(0.125 0.01 280);
+  background: var(--kc-bg-image), var(--kc-bg);
 }
 
 .space-bg::before {
   content: '';
   position: absolute;
   inset: -20%;
-  background:
-    radial-gradient(30rem 22rem at 30% 60%, oklch(0.45 0.15 210 / 0.1), transparent 70%),
-    radial-gradient(26rem 20rem at 75% 40%, oklch(0.5 0.18 285 / 0.12), transparent 70%);
+  background: var(--kc-bg-image-drift);
   animation: var(--animate-aurora-drift);
   will-change: transform;
 }
@@ -110,29 +157,33 @@ body {
 
 /* ── 玻璃面板 ── */
 .glass {
-  @apply bg-white/[0.045] backdrop-blur-xl border border-white/10;
+  background: var(--kc-glass-bg);
+  border: 1px solid var(--kc-glass-border);
+  @apply backdrop-blur-xl;
   box-shadow:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
-    0 8px 32px -12px rgb(0 0 0 / 0.55);
+    inset 0 1px 0 0 var(--kc-glass-inset),
+    var(--kc-glass-shadow);
 }
 
 .glass-deep {
-  @apply bg-white/[0.03] backdrop-blur-2xl border border-white/[0.07];
-  box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.04);
+  background: var(--kc-glass-deep-bg);
+  border: 1px solid var(--kc-glass-deep-border);
+  @apply backdrop-blur-2xl;
+  box-shadow: inset 0 1px 0 0 var(--kc-glass-inset);
 }
 
 /* ── 渐变描边卡片 ── */
 .gradient-ring {
   position: relative;
   border-radius: var(--radius-glass);
-  background: linear-gradient(135deg, oklch(0.6 0.19 280 / 0.6), oklch(0.72 0.14 200 / 0.45))
-    border-box;
+  background: var(--kc-gradient-ring-bg) border-box;
   padding: 1px;
 }
 
 .gradient-ring > .gradient-ring-inner {
   border-radius: calc(var(--radius-glass) - 1px);
-  @apply bg-ink-900/95 backdrop-blur-xl;
+  background: var(--kc-ring-inner-bg);
+  @apply backdrop-blur-xl;
 }
 
 /* ── 流光文本 ── */
@@ -144,18 +195,103 @@ body {
 /* ── 滚动条 ── */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgb(255 255 255 / 0.12) transparent;
+  scrollbar-color: var(--kc-scroll-thumb) transparent;
 }
 *::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgb(255 255 255 / 0.12);
+  background: var(--kc-scroll-thumb);
   border-radius: 3px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgb(255 255 255 / 0.2);
+  background: var(--kc-scroll-thumb-hover);
+}
+
+/* ── 亮色主题工具类重映射（集中替换页面里的暗色 zinc/white/ink 类） ── */
+html[data-theme='light'] {
+  --kc-text: oklch(0.2 0.01 280);
+  --kc-text-secondary: oklch(0.32 0.01 280);
+  --kc-text-dim: oklch(0.45 0.01 280);
+  --kc-text-muted: oklch(0.58 0.01 280);
+}
+:root {
+  --kc-text: oklch(0.87 0.005 280);
+  --kc-text-secondary: oklch(0.8 0.005 280);
+  --kc-text-dim: oklch(0.65 0.005 280);
+  --kc-text-muted: oklch(0.5 0.005 280);
+}
+html[data-theme='light'] .text-zinc-50,
+html[data-theme='light'] .text-zinc-100 {
+  color: oklch(0.2 0.01 280);
+}
+html[data-theme='light'] .text-zinc-200,
+html[data-theme='light'] .text-zinc-300 {
+  color: oklch(0.3 0.01 280);
+}
+html[data-theme='light'] .text-zinc-400 {
+  color: oklch(0.42 0.01 280);
+}
+html[data-theme='light'] .text-zinc-500 {
+  color: oklch(0.5 0.01 280);
+}
+html[data-theme='light'] .text-zinc-600,
+html[data-theme='light'] .text-zinc-700 {
+  color: oklch(0.58 0.01 280);
+}
+html[data-theme='light'] .hover\:text-zinc-100:hover,
+html[data-theme='light'] .hover\:text-zinc-200:hover,
+html[data-theme='light'] .hover\:text-zinc-300:hover {
+  color: oklch(0.2 0.01 280);
+}
+html[data-theme='light'] .placeholder\:text-zinc-600::placeholder,
+html[data-theme='light'] .placeholder\:text-zinc-700::placeholder {
+  color: oklch(0.58 0.01 280);
+}
+/* 白色半透明叠加 → 深色半透明叠加 */
+html[data-theme='light'] .bg-white\/10,
+html[data-theme='light'] .bg-white\/\[0\.035\],
+html[data-theme='light'] .bg-white\/\[0\.03\],
+html[data-theme='light'] .bg-white\/\[0\.04\],
+html[data-theme='light'] .bg-white\/\[0\.05\],
+html[data-theme='light'] .bg-white\/\[0\.06\] {
+  background-color: rgb(20 20 40 / 0.05);
+}
+html[data-theme='light'] .hover\:bg-white\/10:hover,
+html[data-theme='light'] .hover\:bg-white\/\[0\.04\]:hover,
+html[data-theme='light'] .hover\:bg-white\/\[0\.05\]:hover,
+html[data-theme='light'] .hover\:bg-white\/\[0\.06\]:hover,
+html[data-theme='light'] .hover\:bg-white\/\[0\.07\]:hover {
+  background-color: rgb(20 20 40 / 0.08);
+}
+html[data-theme='light'] .border-white\/10,
+html[data-theme='light'] .border-white\/15,
+html[data-theme='light'] .border-white\/\[0\.06\],
+html[data-theme='light'] .border-white\/\[0\.07\],
+html[data-theme='light'] .border-white\/\[0\.08\] {
+  border-color: rgb(15 15 25 / 0.12);
+}
+html[data-theme='light'] .hover\:border-white\/\[0\.08\]:hover {
+  border-color: rgb(15 15 25 / 0.2);
+}
+/* ink 深底 → 浅表面 */
+html[data-theme='light'] .bg-ink-950\/40 {
+  background-color: rgb(255 255 255 / 0.4);
+}
+html[data-theme='light'] .bg-ink-950\/60,
+html[data-theme='light'] .bg-ink-950\/70 {
+  background-color: rgb(250 250 255 / 0.72);
+}
+html[data-theme='light'] .bg-ink-900 {
+  background-color: rgb(255 255 255 / 0.95);
+}
+html[data-theme='light'] .bg-zinc-800\/95 {
+  background-color: rgb(255 255 255 / 0.95);
+}
+html[data-theme='light'] option {
+  background-color: #fff;
+  color: oklch(0.25 0.01 280);
 }
 
 /* ── markdown 排版 ── */

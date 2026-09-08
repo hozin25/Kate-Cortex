@@ -598,7 +598,8 @@ frontend/src/
 - 左侧栏：导航（对话/知识库/记忆/设置）+ 会话列表/条目列表，`backdrop-blur` 毛玻璃
 - 主区：对话气泡大圆角、渐变边框；AI 回答区 `react-markdown` + shiki 深色主题
 - 动效（motion）：消息淡入上浮、流式光标、卡片悬浮位移
-- 默认暗色玻璃拟态，CSS variables + `.dark` 切换支持明暗，详见 TECH_STACK.md §4
+- 默认暗色玻璃拟态；`--kc-*` CSS variables + `html[data-theme="light"]` 支持明暗切换
+  （设置页「外观」可选，localStorage `kc-theme` 持久化，详见 TECH_STACK.md §4）
 
 ---
 

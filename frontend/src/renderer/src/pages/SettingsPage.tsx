@@ -6,6 +6,7 @@ import { useSettingsStore } from '@renderer/stores/settings'
 import { toast } from '@renderer/stores/toast'
 import { api } from '@renderer/api/client'
 import { cn } from '@renderer/lib/utils'
+import { getTheme, setTheme, type Theme } from '@renderer/lib/theme'
 import type {
   AppSettings,
   EmbeddingProviderName,
@@ -58,6 +59,12 @@ export function SettingsPage(): React.JSX.Element {
   const [mcpTest, setMcpTest] = useState<{ ok: boolean; message: string } | null>(null)
   const [testingMcp, setTestingMcp] = useState(false)
   const [draftExportDir, setDraftExportDir] = useState('')
+  const [theme, setThemeState] = useState<Theme>(getTheme())
+
+  const handleTheme = (next: Theme): void => {
+    setTheme(next)
+    setThemeState(next)
+  }
 
   const loadVecStatus = (): void => {
     api
@@ -104,6 +111,27 @@ export function SettingsPage(): React.JSX.Element {
     <div className="h-full overflow-y-auto px-8 py-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
         <h1 className="font-display text-lg text-zinc-100">设置</h1>
+
+        <GlassPanel className="flex items-center justify-between p-5">
+          <div>
+            <div className="text-sm font-medium text-zinc-200">外观</div>
+            <p className="mt-1 text-xs leading-5 text-zinc-500">
+              亮色 / 暗色主题，选择即时生效并保存在本机。
+            </p>
+          </div>
+          <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
+            <ThemeOption
+              active={theme === 'dark'}
+              onClick={() => handleTheme('dark')}
+              label="暗色"
+            />
+            <ThemeOption
+              active={theme === 'light'}
+              onClick={() => handleTheme('light')}
+              label="亮色"
+            />
+          </div>
+        </GlassPanel>
 
         <GlassPanel className="p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
@@ -454,6 +482,28 @@ export function SettingsPage(): React.JSX.Element {
         </GlassPanel>
       </div>
     </div>
+  )
+}
+
+interface ThemeOptionProps {
+  active: boolean
+  onClick: () => void
+  label: string
+}
+
+function ThemeOption({ active, onClick, label }: ThemeOptionProps): React.JSX.Element {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'rounded-lg px-3 py-1.5 text-xs transition',
+        active
+          ? 'bg-aurora-indigo/20 text-zinc-100 shadow-[inset_0_0_0_1px] shadow-aurora-indigo/25'
+          : 'text-zinc-500 hover:text-zinc-300'
+      )}
+    >
+      {label}
+    </button>
   )
 }
 
