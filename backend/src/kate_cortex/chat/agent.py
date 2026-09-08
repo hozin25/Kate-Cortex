@@ -33,6 +33,7 @@ def run_agent_chat(
     profile_snippets: list | None = None,
     collection_names: list[str] | None = None,
     memory_snippets: list | None = None,
+    conversation_summary: str | None = None,
     memory_enabled: bool = False,
     mcp_tools: list[dict] | None = None,
     mcp_url: str | None = None,
@@ -43,6 +44,7 @@ def run_agent_chat(
         profile_snippets=profile_snippets,
         collections=collection_names,
         memory_snippets=memory_snippets,
+        conversation_summary=conversation_summary,
         mcp_enabled=bool(mcp_tools),
     )
     messages = [{"role": "system", "content": system_prompt}, *history]

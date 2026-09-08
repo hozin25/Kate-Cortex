@@ -89,14 +89,24 @@ def memory_lines(memory_snippets) -> list[str]:
     ]
 
 
+CONVERSATION_SUMMARY_HEADER = (
+    "## 对话背景\n"
+    "以下是本次对话更早部分的压缩摘要。此前讨论过的问题、结论与决定视为已知，"
+    "不要向用户重复询问这些内容。"
+)
+
+
 def build_system_prompt(
     rag_snippets=None,
     profile_snippets=None,
     collections=None,
     memory_snippets=None,
+    conversation_summary: str | None = None,
     mcp_enabled: bool = False,
 ) -> str:
     parts = [PERSONA, TOOL_RULES + "\n\n" + MCP_RULES if mcp_enabled else TOOL_RULES]
+    if conversation_summary:
+        parts.append(CONVERSATION_SUMMARY_HEADER + "\n\n" + conversation_summary)
     if profile_snippets:
         blocks = [f"### {s.title}\n{s.content}" for s in profile_snippets]
         parts.append(PROFILE_HEADER + "\n\n" + "\n\n".join(blocks))

@@ -184,7 +184,7 @@ class TestMigrateV4ToV5:
         database = db_mod.connect(db_path)
 
         version = database.conn.execute("SELECT version FROM schema_version").fetchone()
-        assert version[0] == db_mod.SCHEMA_VERSION == 5
+        assert version[0] == db_mod.SCHEMA_VERSION == 6
         assert database.migrated_from == 4
         row = database.conn.execute("SELECT id FROM entries").fetchone()
         assert row[0] == "kc_20260818_001"
@@ -197,6 +197,39 @@ class TestMigrateV4ToV5:
                 )
             }
             assert "entries_vec" in tables
+
+
+class TestMigrateV5ToV6:
+    def _make_v5_db(self, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.executescript(V3_SCHEMA)
+        conn.execute("ALTER TABLE entries ADD COLUMN keywords TEXT")
+        conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER")
+        conn.execute(
+            "INSERT INTO conversations VALUES"
+            " ('c1', NULL, 'glm', 'glm-4.7-flash', '2026-01-01', '2026-01-01')"
+        )
+        conn.execute("UPDATE schema_version SET version = 5")
+        conn.commit()
+        conn.close()
+
+    def test_adds_summary_columns_and_keeps_rows(self, tmp_path):
+        db_path = tmp_path / "index.sqlite"
+        self._make_v5_db(db_path)
+
+        database = db_mod.connect(db_path)
+
+        version = database.conn.execute("SELECT version FROM schema_version").fetchone()
+        assert version[0] == db_mod.SCHEMA_VERSION == 6
+        assert database.migrated_from == 5
+        cols = {
+            row[1]
+            for row in database.conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        assert {"summary", "summarized_until"} <= cols
+        assert (
+            database.conn.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 1
+        )
 
 
 V1_SCHEMA = """

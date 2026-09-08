@@ -224,6 +224,21 @@ class ChatService:
                 (first_message.strip()[:TITLE_LENGTH], session_id),
             )
 
+    def get_summary(self, session_id: str) -> tuple[str | None, str | None]:
+        """(summary, summarized_until)：长对话摘要压缩（IMP-7）"""
+        row = self.conn.execute(
+            "SELECT summary, summarized_until FROM conversations WHERE id = ?",
+            (session_id,),
+        ).fetchone()
+        return (row["summary"], row["summarized_until"]) if row else (None, None)
+
+    def set_summary(self, session_id: str, summary: str, summarized_until: str) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE conversations SET summary = ?, summarized_until = ? WHERE id = ?",
+                (summary, summarized_until, session_id),
+            )
+
     def _to_session(self, row: sqlite3.Row) -> Session:
         return Session(
             id=row["id"],

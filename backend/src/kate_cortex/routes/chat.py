@@ -14,6 +14,7 @@ from ..chat.agent import run_agent_chat, sse as sse_event
 from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
+from ..chat.summarizer import KEEP_ROUNDS, ensure_summary
 from ..mcp_client import list_mcp_tools
 from ..models import (
     ChatRegenerate,
@@ -29,7 +30,7 @@ from ..providers.base import ProviderError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-HISTORY_ROUNDS = 20
+HISTORY_ROUNDS = KEEP_ROUNDS  # 最近 N 轮原文；更早的由 summarizer 压缩（IMP-7）
 
 
 @router.post("/sessions", status_code=201, response_model=SessionOut)
@@ -287,6 +288,8 @@ def _stream_response(
             if rag_enabled
             else []
         )
+        # 长对话摘要（IMP-7）：溢出轮压缩为背景注入 system prompt；失败降级硬截断
+        conversation_summary = ensure_summary(chat_service, provider, session_id)
         profile = user_profile(request.app.state.storage)
         memories = (
             resident_memories(request.app.state.storage) if memory_enabled else []
@@ -326,6 +329,7 @@ def _stream_response(
                 name for name, _ in request.app.state.storage.list_collections()
             ],
             memory_snippets=memories,
+            conversation_summary=conversation_summary,
             memory_enabled=memory_enabled,
             mcp_tools=mcp_tools,
             mcp_url=mcp_url if mcp_tools else None,

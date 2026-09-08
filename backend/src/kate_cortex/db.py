@@ -6,7 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 # 向量混合检索（VECTOR_SEARCH_PLAN.md §4）：维度/距离度量在此定死，
 # 变更维度须整表重建（rebuild 端点覆盖）
@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS conversations (
   provider    TEXT NOT NULL,
   model       TEXT NOT NULL,
   created_at  TEXT NOT NULL,
-  updated_at  TEXT NOT NULL
+  updated_at  TEXT NOT NULL,
+  summary     TEXT,
+  summarized_until TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at DESC);
 
@@ -150,6 +152,8 @@ class Database:
             self._add_memory_columns()
         if current < 5:
             pass  # v5：向量检索（entries_vec）。无数据搬迁，建表见 init_schema
+        if current < 6:
+            self._add_conversation_summary_columns()
         self._conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
 
     def _rebuild_entries_without_type(self) -> None:
@@ -237,6 +241,22 @@ class Database:
         with conn:
             conn.execute("ALTER TABLE entries ADD COLUMN keywords TEXT")
             conn.execute("ALTER TABLE entries ADD COLUMN importance INTEGER")
+
+    def _add_conversation_summary_columns(self) -> None:
+        """v5 → v6：长对话摘要压缩（IMP-7）。conversations 加 summary（≤500 字
+        增量摘要）与 summarized_until（已摘要覆盖到的消息时间戳），均可空——
+        未触发摘要的会话不受影响。老库无 conversations 表时由 _SCHEMA 兜底
+        建表（已含新列），此处按列存在性幂等加列"""
+        conn = self._conn
+        existing = {
+            row[1] for row in conn.execute("PRAGMA table_info(conversations)").fetchall()
+        }
+        conn.commit()
+        with conn:
+            if "summary" not in existing:
+                conn.execute("ALTER TABLE conversations ADD COLUMN summary TEXT")
+            if "summarized_until" not in existing:
+                conn.execute("ALTER TABLE conversations ADD COLUMN summarized_until TEXT")
 
     def close(self) -> None:
         self._conn.close()
