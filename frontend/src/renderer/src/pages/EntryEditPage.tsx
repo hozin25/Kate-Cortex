@@ -103,7 +103,7 @@ export function EntryEditPage(): React.JSX.Element {
   )
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-8 py-6">
+    <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-8 sm:py-6">
       <div className="flex items-center gap-2 text-xs text-zinc-500">
         <Link
           to={isNew ? '/library' : `/entries/${id}`}

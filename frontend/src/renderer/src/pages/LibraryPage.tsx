@@ -97,8 +97,8 @@ export function LibraryPage(): React.JSX.Element {
   const hasFilter = Boolean(query || collectionFilter)
 
   return (
-    <div className="flex h-full min-h-0 flex-col px-8 py-6">
-      <div className="flex items-center justify-between">
+    <div className="flex h-full min-h-0 flex-col px-4 py-4 sm:px-8 sm:py-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-display text-lg text-zinc-100">
           知识库 <span className="ml-1 text-sm text-zinc-500">{total} 条</span>
         </h1>
@@ -141,7 +141,7 @@ export function LibraryPage(): React.JSX.Element {
       ) : (
         <>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <div className="glass flex min-w-56 flex-1 items-center gap-2 rounded-xl px-3 py-2">
+            <div className="glass flex min-w-0 flex-1 items-center gap-2 rounded-xl px-3 py-2 sm:min-w-56">
               <Search className="size-4 shrink-0 text-zinc-500" />
               <input
                 ref={searchRef}

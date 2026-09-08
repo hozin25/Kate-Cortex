@@ -146,7 +146,7 @@ export function SettingsPage(): React.JSX.Element {
   const keyChanged = (p: ProviderName): boolean => draftKeys[p]?.trim().length > 0
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-6">
+    <div className="h-full overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
         <h1 className="font-display text-lg text-zinc-100">设置</h1>
 
@@ -157,7 +157,7 @@ export function SettingsPage(): React.JSX.Element {
               亮色 / 暗色主题，选择即时生效并保存在本机。
             </p>
           </div>
-          <div className="flex items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
+          <div className="flex shrink-0 items-center gap-1 rounded-xl border border-white/[0.06] bg-white/[0.03] p-1">
             <ThemeOption
               active={theme === 'dark'}
               onClick={() => handleTheme('dark')}
@@ -189,9 +189,9 @@ export function SettingsPage(): React.JSX.Element {
               const status = testStatus[p.name]
               return (
                 <div key={p.name}>
-                  <div className="flex items-center gap-2">
-                    <span className="w-24 text-[13px] text-zinc-300">{p.label}</span>
-                    <div className="relative flex-1">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    <span className="shrink-0 text-[13px] text-zinc-300 sm:w-24">{p.label}</span>
+                    <div className="relative w-full flex-1">
                       <input
                         type={visible[p.name] ? 'text' : 'password'}
                         value={draftKeys[p.name]}
@@ -211,33 +211,35 @@ export function SettingsPage(): React.JSX.Element {
                         )}
                       </button>
                     </div>
-                    <button
-                      onClick={() =>
-                        void handleSave({
-                          provider_keys: {
-                            ...settings.provider_keys,
-                            [p.name]: draftKeys[p.name].trim()
-                          }
-                        })
-                      }
-                      disabled={!keyChanged(p.name)}
-                      className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
-                    >
-                      保存
-                    </button>
-                    <button
-                      onClick={() => void testProvider(p.name)}
-                      disabled={!stored && !keyChanged(p.name)}
-                      className="flex shrink-0 items-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40"
-                    >
-                      <Plug className="size-3.5" />
-                      测试
-                    </button>
+                    <div className="flex gap-2 sm:contents">
+                      <button
+                        onClick={() =>
+                          void handleSave({
+                            provider_keys: {
+                              ...settings.provider_keys,
+                              [p.name]: draftKeys[p.name].trim()
+                            }
+                          })
+                        }
+                        disabled={!keyChanged(p.name)}
+                        className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:flex-none"
+                      >
+                        保存
+                      </button>
+                      <button
+                        onClick={() => void testProvider(p.name)}
+                        disabled={!stored && !keyChanged(p.name)}
+                        className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40 sm:flex-none"
+                      >
+                        <Plug className="size-3.5" />
+                        测试
+                      </button>
+                    </div>
                   </div>
                   {status && (
                     <p
                       className={cn(
-                        'mt-1.5 pl-26 text-xs',
+                        'mt-1.5 text-xs sm:pl-26',
                         status.ok ? 'text-emerald-300/90' : 'text-rose-300/90'
                       )}
                     >
@@ -255,7 +257,7 @@ export function SettingsPage(): React.JSX.Element {
             <Settings2 className="size-4 text-aurora-indigo" />
             默认模型
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
             <select
               value={settings.default_provider}
               onChange={(e) => {
@@ -266,7 +268,7 @@ export function SettingsPage(): React.JSX.Element {
                   default_model: hint
                 })
               }}
-              className="glass-deep rounded-xl px-3 py-2 text-[13px] text-zinc-200 outline-none [&>option]:bg-ink-900"
+              className="glass-deep w-full rounded-xl px-3 py-2 text-[13px] text-zinc-200 outline-none sm:w-auto [&>option]:bg-ink-900"
             >
               {PROVIDERS.map((p) => (
                 <option key={p.name} value={p.name}>
@@ -278,49 +280,51 @@ export function SettingsPage(): React.JSX.Element {
               value={draftModel}
               onChange={(e) => setDraftModel(e.target.value)}
               placeholder={PROVIDERS.find((p) => p.name === settings.default_provider)?.modelHint}
-              className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600"
+              className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600"
             />
             <button
               onClick={() => void handleSave({ default_model: draftModel.trim() })}
               disabled={draftModel.trim() === settings.default_model || !draftModel.trim()}
-              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+              className="w-full shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:w-auto"
             >
               保存
             </button>
           </div>
         </GlassPanel>
 
-        <GlassPanel className="flex items-center justify-between p-5">
-          <div>
-            <div className="text-sm font-medium text-zinc-200">知识库引用（RAG）默认开关</div>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">
-              开启后，新对话提问时 Kate 会自动检索知识库相关条目作为回答参考。对话中可单独切换。
-            </p>
+        <GlassPanel className="p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-sm font-medium text-zinc-200">
+              知识库引用（RAG）默认开关
+            </div>
+            <ToggleSwitch
+              checked={settings.rag_default}
+              onChange={(v) => void handleSave({ rag_default: v })}
+            />
           </div>
-          <ToggleSwitch
-            checked={settings.rag_default}
-            onChange={(v) => void handleSave({ rag_default: v })}
-          />
-        </GlassPanel>
-
-        <GlassPanel className="flex items-center justify-between p-5">
-          <div>
-            <div className="text-sm font-medium text-zinc-200">自动记忆</div>
-            <p className="mt-1 text-xs leading-5 text-zinc-500">
-              开启后，Kate
-              会在对话中自动记住关于你的重要事实（健康、计划、偏好），存入「记忆」合集，
-              并在之后的对话中自然地想起。每条记忆保存时会有提示、可撤销，也可在知识库中管理。
-            </p>
-          </div>
-          <ToggleSwitch
-            checked={settings.memory_enabled}
-            onChange={(v) => void handleSave({ memory_enabled: v })}
-          />
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            开启后，新对话提问时 Kate 会自动检索知识库相关条目作为回答参考。对话中可单独切换。
+          </p>
         </GlassPanel>
 
         <GlassPanel className="p-5">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-sm font-medium text-zinc-200">自动记忆</div>
+            <ToggleSwitch
+              checked={settings.memory_enabled}
+              onChange={(v) => void handleSave({ memory_enabled: v })}
+            />
+          </div>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            开启后，Kate
+            会在对话中自动记住关于你的重要事实（健康、计划、偏好），存入「记忆」合集，
+            并在之后的对话中自然地想起。每条记忆保存时会有提示、可撤销，也可在知识库中管理。
+          </p>
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
                 <Layers className="size-4 text-aurora-indigo" />
                 语义检索（向量）
@@ -344,13 +348,13 @@ export function SettingsPage(): React.JSX.Element {
                   .finally(() => setRebuilding(false))
               }}
               disabled={!vecStatus?.available || rebuilding}
-              className="flex shrink-0 items-center gap-1 rounded-xl border border-aurora-indigo/25 bg-aurora-indigo/10 px-3 py-2 text-xs text-zinc-200 transition hover:bg-aurora-indigo/20 disabled:opacity-40"
+              className="flex w-fit shrink-0 items-center gap-1 self-start rounded-xl border border-aurora-indigo/25 bg-aurora-indigo/10 px-3 py-2 text-xs text-zinc-200 transition hover:bg-aurora-indigo/20 disabled:opacity-40 sm:self-auto"
             >
               {rebuilding ? <Spinner className="size-3.5" /> : null}
               重建索引
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <span className="text-xs text-zinc-400">Embedding 服务商</span>
             <select
               value={settings.embedding_provider}
@@ -364,7 +368,7 @@ export function SettingsPage(): React.JSX.Element {
                   loadVecStatus()
                 })
               }}
-              className="glass-deep rounded-xl px-3 py-1.5 text-[13px] text-zinc-200 outline-none [&>option]:bg-ink-900"
+              className="glass-deep max-w-full rounded-xl px-3 py-1.5 text-[13px] text-zinc-200 outline-none [&>option]:bg-ink-900"
             >
               {EMBED_PROVIDERS.map((p) => (
                 <option key={p.name} value={p.name}>
@@ -375,8 +379,8 @@ export function SettingsPage(): React.JSX.Element {
             <span className="font-mono text-xs text-zinc-500">{settings.embedding_model}</span>
           </div>
           {settings.embedding_provider === 'siliconflow' && (
-            <div className="mt-3 flex items-center gap-2">
-              <div className="relative flex-1">
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+              <div className="relative w-full flex-1">
                 <input
                   type="password"
                   value={draftEmbedKey}
@@ -392,7 +396,7 @@ export function SettingsPage(): React.JSX.Element {
                   void handleSave({ embedding_api_key: draftEmbedKey.trim() }).then(loadVecStatus)
                 }
                 disabled={!draftEmbedKey.trim()}
-                className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+                className="w-full shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:w-auto"
               >
                 保存
               </button>
@@ -418,7 +422,7 @@ export function SettingsPage(): React.JSX.Element {
             <span className="font-mono text-zinc-400">https://mcp.amap.com/mcp?key=你的Key</span>
             （在高德开放平台创建「Web 服务」Key 后按其 MCP 文档拼接）。留空即停用。
           </p>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
             <input
               type="password"
               value={draftMcpUrl}
@@ -426,38 +430,40 @@ export function SettingsPage(): React.JSX.Element {
               placeholder={
                 settings.mcp_url ? '已保存（输入以覆盖）' : 'MCP 端点 URL（https://…?key=…）'
               }
-              className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+              className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
             />
-            <button
-              onClick={() => {
-                void handleSave({ mcp_url: draftMcpUrl.trim() }).then(() => setMcpTest(null))
-              }}
-              disabled={draftMcpUrl.trim() === (settings.mcp_url ?? '')}
-              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
-            >
-              保存
-            </button>
-            <button
-              onClick={() => {
-                setTestingMcp(true)
-                setMcpTest(null)
-                api
-                  .post<{ ok: boolean; message: string }>('/mcp/test')
-                  .then((r) => setMcpTest({ ok: r.ok, message: r.message }))
-                  .catch((err) =>
-                    setMcpTest({
-                      ok: false,
-                      message: err instanceof Error ? err.message : '网络错误'
-                    })
-                  )
-                  .finally(() => setTestingMcp(false))
-              }}
-              disabled={!settings.mcp_url || testingMcp}
-              className="flex shrink-0 items-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40"
-            >
-              <Plug className="size-3.5" />
-              测试
-            </button>
+            <div className="flex gap-2 sm:contents">
+              <button
+                onClick={() => {
+                  void handleSave({ mcp_url: draftMcpUrl.trim() }).then(() => setMcpTest(null))
+                }}
+                disabled={draftMcpUrl.trim() === (settings.mcp_url ?? '')}
+                className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:flex-none"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => {
+                  setTestingMcp(true)
+                  setMcpTest(null)
+                  api
+                    .post<{ ok: boolean; message: string }>('/mcp/test')
+                    .then((r) => setMcpTest({ ok: r.ok, message: r.message }))
+                    .catch((err) =>
+                      setMcpTest({
+                        ok: false,
+                        message: err instanceof Error ? err.message : '网络错误'
+                      })
+                    )
+                    .finally(() => setTestingMcp(false))
+                }}
+                disabled={!settings.mcp_url || testingMcp}
+                className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40 sm:flex-none"
+              >
+                <Plug className="size-3.5" />
+                测试
+              </button>
+            </div>
           </div>
           {(mcpTest || settings.mcp_url) && (
             <p
@@ -486,19 +492,19 @@ export function SettingsPage(): React.JSX.Element {
             对话里让 Kate「保存成文件 / 导出 md」时（如旅游行程、报告），文档会写成 独立的 Markdown
             文件存到此文件夹。留空使用默认： 文档\Kate-Cortex 导出。
           </p>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
             <input
               value={draftExportDir}
               onChange={(e) => setDraftExportDir(e.target.value)}
               placeholder={
                 settings.export_dir ? '已保存（输入以覆盖）' : '默认： 文档\\Kate-Cortex 导出'
               }
-              className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+              className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
             />
             <button
               onClick={() => void handleSave({ export_dir: draftExportDir.trim() })}
               disabled={draftExportDir.trim() === (settings.export_dir ?? '')}
-              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+              className="w-full shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:w-auto"
             >
               保存
             </button>
@@ -521,12 +527,12 @@ export function SettingsPage(): React.JSX.Element {
           <div className="mt-4 space-y-3">
             <div>
               <div className="text-[13px] text-zinc-300">Obsidian vault</div>
-              <div className="mt-1.5 flex items-center gap-2">
+              <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
                 <input
                   value={draftObsidianDir}
                   onChange={(e) => setDraftObsidianDir(e.target.value)}
                   placeholder="D:\Obsidian\MyVault"
-                  className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+                  className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
                 />
                 <ImportButtons
                   disabled={!draftObsidianDir.trim() || importing !== null}
@@ -538,12 +544,12 @@ export function SettingsPage(): React.JSX.Element {
             </div>
             <div>
               <div className="text-[13px] text-zinc-300">Kate-Cortex vault（从另一份数据目录合并）</div>
-              <div className="mt-1.5 flex items-center gap-2">
+              <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
                 <input
                   value={draftVaultDir}
                   onChange={(e) => setDraftVaultDir(e.target.value)}
                   placeholder="D:\workspace\Kate-Cortex\vault"
-                  className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+                  className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
                 />
                 <ImportButtons
                   disabled={!draftVaultDir.trim() || importing !== null}
@@ -588,23 +594,23 @@ interface ImportButtonsProps {
 
 function ImportButtons({ disabled, busy, onPreview, onRun }: ImportButtonsProps): React.JSX.Element {
   return (
-    <>
+    <div className="flex gap-2 sm:contents">
       <button
         onClick={onPreview}
         disabled={disabled || busy}
-        className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+        className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:flex-none"
       >
         预览
       </button>
       <button
         onClick={onRun}
         disabled={disabled || busy}
-        className="shrink-0 rounded-xl border border-aurora-violet/30 bg-aurora-violet/15 px-3 py-2 text-xs text-zinc-200 transition hover:brightness-125 disabled:opacity-40"
+        className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-aurora-violet/30 bg-aurora-violet/15 px-3 py-2 text-xs text-zinc-200 transition hover:brightness-125 disabled:opacity-40 sm:flex-none"
       >
         {busy ? <Spinner className="size-3.5" /> : null}
         执行
       </button>
-    </>
+    </div>
   )
 }
 
@@ -619,7 +625,7 @@ function ThemeOption({ active, onClick, label }: ThemeOptionProps): React.JSX.El
     <button
       onClick={onClick}
       className={cn(
-        'rounded-lg px-3 py-1.5 text-xs transition',
+        'whitespace-nowrap rounded-lg px-3 py-1.5 text-xs transition',
         active
           ? 'bg-aurora-indigo/20 text-zinc-100 shadow-[inset_0_0_0_1px] shadow-aurora-indigo/25'
           : 'text-zinc-500 hover:text-zinc-300'

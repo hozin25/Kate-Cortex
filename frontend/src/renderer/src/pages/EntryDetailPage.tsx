@@ -92,7 +92,7 @@ export function EntryDetailPage(): React.JSX.Element {
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto px-8 py-6">
+    <div className="h-full min-h-0 overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}

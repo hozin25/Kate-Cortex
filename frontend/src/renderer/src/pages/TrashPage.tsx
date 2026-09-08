@@ -47,7 +47,7 @@ export function TrashPage(): React.JSX.Element {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-6">
+    <div className="h-full overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-lg text-zinc-100">

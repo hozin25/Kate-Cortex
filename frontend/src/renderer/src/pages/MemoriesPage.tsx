@@ -49,9 +49,9 @@ export function MemoriesPage(): React.JSX.Element {
   }, [memories, query])
 
   return (
-    <div className="h-full overflow-y-auto px-8 py-6">
+    <div className="h-full overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
           <div>
             <h1 className="font-display text-lg text-zinc-100">记忆</h1>
             <p className="mt-1 text-xs leading-5 text-zinc-500">
@@ -60,7 +60,7 @@ export function MemoriesPage(): React.JSX.Element {
               删除后移入 vault/.trash 保留。
             </p>
           </div>
-          <div className="relative w-44 shrink-0">
+          <div className="relative w-full sm:w-44 sm:shrink-0">
             <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-zinc-600" />
             <input
               value={query}

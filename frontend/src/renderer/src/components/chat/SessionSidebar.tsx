@@ -3,6 +3,7 @@ import { motion } from 'motion/react'
 import { Check, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
 import { useChatStore } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { useUiStore } from '@renderer/stores/ui'
 import { toast } from '@renderer/stores/toast'
 import { cn, formatTime } from '@renderer/lib/utils'
 import type { ChatSession } from '@renderer/types'
@@ -14,6 +15,7 @@ export function SessionSidebar(): React.JSX.Element {
   const selectSession = useChatStore((s) => s.selectSession)
   const loadSessions = useChatStore((s) => s.loadSessions)
   const settings = useSettingsStore((s) => s.settings)
+  const setSessionsOpen = useUiStore((s) => s.setSessionsOpen)
 
   useEffect(() => {
     void loadSessions().catch((err) =>
@@ -25,9 +27,15 @@ export function SessionSidebar(): React.JSX.Element {
     const provider = settings?.default_provider ?? 'deepseek'
     try {
       await createSession(provider)
+      setSessionsOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '创建会话失败')
     }
+  }
+
+  const handleSelect = (id: string): void => {
+    void selectSession(id)
+    setSessionsOpen(false)
   }
 
   return (
@@ -39,7 +47,9 @@ export function SessionSidebar(): React.JSX.Element {
         >
           <MessageSquarePlus className="size-4" />
           新会话
-          <kbd className="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400">Ctrl+N</kbd>
+          <kbd className="hidden rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-zinc-400 md:inline">
+            Ctrl+N
+          </kbd>
         </button>
       </div>
       <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 pb-2">
@@ -48,7 +58,7 @@ export function SessionSidebar(): React.JSX.Element {
             key={s.id}
             session={s}
             active={s.id === currentId}
-            onSelect={() => void selectSession(s.id)}
+            onSelect={() => handleSelect(s.id)}
           />
         ))}
         {sessions.length === 0 && (

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { MessagesSquare, Search } from 'lucide-react'
+import { MessagesSquare, PanelLeftOpen, Search } from 'lucide-react'
 import { api } from '@renderer/api/client'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
@@ -13,6 +13,7 @@ import { EmptyState } from '@renderer/components/common/EmptyState'
 import { GradientText } from '@renderer/components/common/Glass'
 import { useChatStore } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { useUiStore } from '@renderer/stores/ui'
 import { toast } from '@renderer/stores/toast'
 import type { ProviderCatalog } from '@renderer/types'
 
@@ -90,14 +91,23 @@ export function ChatPage(): React.JSX.Element {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between px-6 pb-2 pt-4">
-        <div className="min-w-0 truncate text-sm text-zinc-400">
-          <GradientText>
-            {store.sessions.find((s) => s.id === currentId)?.title ?? '对话'}
-          </GradientText>
+      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-3 sm:px-6 sm:pt-4">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            onClick={() => useUiStore.getState().setSessionsOpen(true)}
+            className="glass grid size-8 shrink-0 place-items-center rounded-xl text-zinc-300 transition hover:text-zinc-100 md:hidden"
+            aria-label="会话列表"
+          >
+            <PanelLeftOpen className="size-4" />
+          </button>
+          <div className="min-w-0 truncate text-sm text-zinc-400">
+            <GradientText>
+              {store.sessions.find((s) => s.id === currentId)?.title ?? '对话'}
+            </GradientText>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <div className="glass flex items-center gap-1.5 rounded-xl px-2.5 py-1.5">
+          <div className="glass hidden items-center gap-1.5 rounded-xl px-2.5 py-1.5 sm:flex">
             <Search className="size-3.5 shrink-0 text-zinc-500" />
             <input
               value={search}
@@ -125,7 +135,7 @@ export function ChatPage(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 py-4">
           {keyword && (
             <p className="text-center text-xs text-zinc-500">
@@ -214,7 +224,7 @@ export function ChatPage(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="px-6 pb-4 pt-2">
+      <div className="px-3 pb-3 pt-2 sm:px-6 sm:pb-4">
         <ChatInput
           streaming={streaming}
           visionSupported={visionSupported}
