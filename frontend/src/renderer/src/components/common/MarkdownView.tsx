@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { createHighlighter, type Highlighter } from 'shiki'
@@ -76,6 +77,17 @@ interface MarkdownViewProps {
   className?: string
 }
 
+// [[slug]] / [[slug|别名]] 双链 → 条目详情路由（slug 可被后端 id/slug 双查）
+const WIKI_LINK_RE = /(?<!!)\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g
+const ENTRY_SCHEME = 'kate-entry://'
+
+function expandWikiLinks(content: string): string {
+  return content.replace(WIKI_LINK_RE, (_m, slug: string, alias?: string) => {
+    const target = slug.trim().replace(/\s+/g, '-')
+    return `[${(alias ?? slug).trim()}](${ENTRY_SCHEME}${target})`
+  })
+}
+
 export const MarkdownView = memo(function MarkdownView({ content, className }: MarkdownViewProps) {
   return (
     <div className={cn('prose-kate', className)}>
@@ -96,6 +108,11 @@ export const MarkdownView = memo(function MarkdownView({ content, className }: M
             return <pre>{children}</pre>
           },
           a({ href, children }) {
+            if (typeof href === 'string' && href.startsWith(ENTRY_SCHEME)) {
+              return (
+                <Link to={`/entries/${href.slice(ENTRY_SCHEME.length)}`}>{children}</Link>
+              )
+            }
             return (
               <a href={href} target="_blank" rel="noreferrer">
                 {children}
@@ -117,7 +134,7 @@ export const MarkdownView = memo(function MarkdownView({ content, className }: M
           }
         }}
       >
-        {content}
+        {expandWikiLinks(content)}
       </ReactMarkdown>
     </div>
   )

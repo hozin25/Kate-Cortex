@@ -82,6 +82,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         embeddings,
         entries,
         health,
+        importer,
         mcp,
         settings,
         sync,
@@ -96,6 +97,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(settings.router, prefix="/api")
     app.include_router(embeddings.router, prefix="/api")
     app.include_router(mcp.router, prefix="/api")
+    app.include_router(importer.router, prefix="/api")
     app.include_router(attachments.router, prefix="/api")
     app.include_router(trash.router, prefix="/api")
     return app

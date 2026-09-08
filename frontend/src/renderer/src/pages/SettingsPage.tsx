@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Eye, EyeOff, FileDown, Globe, KeyRound, Layers, Plug, Settings2 } from 'lucide-react'
+import {
+  Eye,
+  EyeOff,
+  FileDown,
+  FolderInput,
+  Globe,
+  KeyRound,
+  Layers,
+  Plug,
+  Settings2
+} from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { useSettingsStore } from '@renderer/stores/settings'
@@ -60,6 +70,34 @@ export function SettingsPage(): React.JSX.Element {
   const [testingMcp, setTestingMcp] = useState(false)
   const [draftExportDir, setDraftExportDir] = useState('')
   const [theme, setThemeState] = useState<Theme>(getTheme())
+  const [draftObsidianDir, setDraftObsidianDir] = useState('')
+  const [draftVaultDir, setDraftVaultDir] = useState('')
+  const [importing, setImporting] = useState<
+    'obsidian-preview' | 'obsidian-run' | 'vault-preview' | 'vault-run' | null
+  >(null)
+  const [importReport, setImportReport] = useState<Record<string, unknown> | null>(null)
+
+  const runImport = (kind: 'obsidian' | 'vault', dryRun: boolean): Promise<void> => {
+    const source_dir = (kind === 'obsidian' ? draftObsidianDir : draftVaultDir).trim()
+    setImporting(`${kind}-${dryRun ? 'preview' : 'run'}`)
+    setImportReport(null)
+    return api
+      .post<Record<string, unknown>>(`/import/${kind}`, { source_dir, dry_run: dryRun })
+      .then((report) => {
+        setImportReport(report)
+        if (!dryRun) {
+          const attachments = (report.attachments as number) ?? 0
+          toast.success(
+            `导入完成：${(report.imported as number) ?? 0} 条条目` +
+              (attachments > 0 ? `、${attachments} 个附件` : '')
+          )
+        } else {
+          toast.info('预览完成，报告见下方')
+        }
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : '导入失败'))
+      .finally(() => setImporting(null))
+  }
 
   const handleTheme = (next: Theme): void => {
     setTheme(next)
@@ -471,6 +509,62 @@ export function SettingsPage(): React.JSX.Element {
         </GlassPanel>
 
         <GlassPanel className="p-5">
+          <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+            <FolderInput className="size-4 text-aurora-violet" />
+            数据导入
+          </div>
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            粘贴源目录的绝对路径（MVP 不做文件夹选择对话框）。先「预览」看报告，确认后再「执行」。
+            导入是复制，不会删除或修改源目录。
+          </p>
+
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="text-[13px] text-zinc-300">Obsidian vault</div>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  value={draftObsidianDir}
+                  onChange={(e) => setDraftObsidianDir(e.target.value)}
+                  placeholder="D:\Obsidian\MyVault"
+                  className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+                />
+                <ImportButtons
+                  disabled={!draftObsidianDir.trim() || importing !== null}
+                  busy={importing === 'obsidian-preview' || importing === 'obsidian-run'}
+                  onPreview={() => void runImport('obsidian', true)}
+                  onRun={() => void runImport('obsidian', false)}
+                />
+              </div>
+            </div>
+            <div>
+              <div className="text-[13px] text-zinc-300">Kate-Cortex vault（从另一份数据目录合并）</div>
+              <div className="mt-1.5 flex items-center gap-2">
+                <input
+                  value={draftVaultDir}
+                  onChange={(e) => setDraftVaultDir(e.target.value)}
+                  placeholder="D:\workspace\Kate-Cortex\vault"
+                  className="glass-deep flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+                />
+                <ImportButtons
+                  disabled={!draftVaultDir.trim() || importing !== null}
+                  busy={importing === 'vault-preview' || importing === 'vault-run'}
+                  onPreview={() => void runImport('vault', true)}
+                  onRun={() => void runImport('vault', false)}
+                />
+              </div>
+              <p className="mt-1 text-[11px] leading-4 text-zinc-600">
+                条目/合集/双链/附件合并拷贝，同名冲突自动改名；API Key 只补缺失不覆盖。
+              </p>
+            </div>
+            {importReport && (
+              <pre className="max-h-56 overflow-auto rounded-xl bg-white/[0.04] p-3 font-mono text-[11px] leading-5 text-zinc-300">
+                {JSON.stringify(importReport, null, 2)}
+              </pre>
+            )}
+          </div>
+        </GlassPanel>
+
+        <GlassPanel className="p-5">
           <div className="text-sm font-medium text-zinc-200">Vault 路径（启动时确定）</div>
           <p className="mt-1 break-all font-mono text-xs leading-5 text-zinc-500">
             {settings.vault_path ?? '（使用默认路径）'}
@@ -482,6 +576,35 @@ export function SettingsPage(): React.JSX.Element {
         </GlassPanel>
       </div>
     </div>
+  )
+}
+
+interface ImportButtonsProps {
+  disabled: boolean
+  busy: boolean
+  onPreview: () => void
+  onRun: () => void
+}
+
+function ImportButtons({ disabled, busy, onPreview, onRun }: ImportButtonsProps): React.JSX.Element {
+  return (
+    <>
+      <button
+        onClick={onPreview}
+        disabled={disabled || busy}
+        className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+      >
+        预览
+      </button>
+      <button
+        onClick={onRun}
+        disabled={disabled || busy}
+        className="shrink-0 rounded-xl border border-aurora-violet/30 bg-aurora-violet/15 px-3 py-2 text-xs text-zinc-200 transition hover:brightness-125 disabled:opacity-40"
+      >
+        {busy ? <Spinner className="size-3.5" /> : null}
+        执行
+      </button>
+    </>
   )
 }
 
