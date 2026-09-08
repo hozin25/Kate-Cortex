@@ -22,8 +22,11 @@ from .vectors import VectorIndex
 logger = logging.getLogger(__name__)
 
 APP_NAME = "kate-cortex"
-# dev 期渲染进程由 vite 提供，端口可能被占用而顺延（5173/5174/…），按正则放行
+# dev 期渲染进程由 vite 提供，端口可能被占用而顺延（5173/5174/…），按正则放行；
+# 远程部署（Vercel 等）经 KATE_ALLOWED_ORIGINS 追加放行源（逗号分隔，支持 *）
 RENDERER_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+_extra_origins = os.environ.get("KATE_ALLOWED_ORIGINS", "")
+RENDERER_ORIGINS += [o.strip() for o in _extra_origins.split(",") if o.strip()]
 RENDERER_ORIGIN_RE = r"https?://(localhost|127\.0\.0\.1):\d+"
 
 # 鉴权豁免：health 供 sidecar 就绪探测与「端口被占时识别本应用」，必须开放

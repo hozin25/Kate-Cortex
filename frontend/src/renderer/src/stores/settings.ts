@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api } from '@renderer/api/client'
+import { api, apiUrl } from '@renderer/api/client'
 import type { AppSettings, ProviderName } from '@renderer/types'
 
 interface SettingsState {
@@ -44,7 +44,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     set({ testStatus: { ...get().testStatus, [provider]: null } })
     let result: { ok: boolean; message: string }
     try {
-      const resp = await fetch('http://127.0.0.1:1738/api/providers/test', {
+      const resp = await fetch(apiUrl('/providers/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ provider })

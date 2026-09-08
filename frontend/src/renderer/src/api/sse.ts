@@ -1,6 +1,6 @@
 const RUNTIME = typeof window !== 'undefined' ? window.api?.kateRuntime : undefined
-const BASE = `http://127.0.0.1:${RUNTIME?.apiPort ?? 1738}/api`
-const API_TOKEN = RUNTIME?.apiToken
+const BASE = import.meta.env.VITE_API_BASE ?? `http://127.0.0.1:${RUNTIME?.apiPort ?? 1738}/api`
+const API_TOKEN = RUNTIME?.apiToken ?? import.meta.env.VITE_API_TOKEN
 
 export interface SseHandler {
   onEvent: (event: string, data: Record<string, unknown>) => void

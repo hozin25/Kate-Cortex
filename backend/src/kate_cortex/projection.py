@@ -94,7 +94,13 @@ class ProjectionCache:
         if len(rows) < MIN_POINTS:
             return ProjectionResult("insufficient", _elapsed(started))
         collections_map = self._load_collections()
-        method, coords = self._project([row[3] for row in rows], len(rows))
+        try:
+            method, coords = self._project([row[3] for row in rows], len(rows))
+        except ModuleNotFoundError as exc:
+            # 精简部署（如 Vercel serverless）不装 numpy/scikit-learn（体积限制）：
+            # 三维视图缺席返回空态，检索/对话等其余功能不受影响
+            logger.warning("三维投影依赖缺失（%s），语义空间视图不可用", exc.name or exc)
+            return ProjectionResult("unavailable", _elapsed(started))
         points = [
             ProjectionPoint(
                 entry_id=row[0],

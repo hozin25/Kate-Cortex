@@ -1,5 +1,12 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  /** Web 构建（Vercel）的后端地址，如 /api（同源）或 https://xxx/api；Electron 内不设置 */
+  readonly VITE_API_BASE?: string
+  /** 远程部署的后端访问令牌（与 KATE_API_TOKEN 配对）；Electron 内用 preload 注入的 token */
+  readonly VITE_API_TOKEN?: string
+}
+
 export {}
 
 declare global {

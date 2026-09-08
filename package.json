@@ -1,0 +1,5 @@
+{
+    "name": "kate-cortex",
+    "private": true,
+    "packageManager": "pnpm@10.30.0"
+}

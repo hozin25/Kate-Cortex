@@ -11,6 +11,7 @@ __pycache__/
 # Node / Frontend
 node_modules/
 dist/
+.vercel/
 frontend/dist/
 frontend/out/
 frontend/release/

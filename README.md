@@ -46,6 +46,24 @@ cd frontend && pnpm build && pnpm exec electron-builder --win
 产物：`frontend/release/Kate-Cortex-Setup-<version>.exe`（另有 `win-unpacked/` 免安装直跑）。
 打包版数据目录：`%USERPROFILE%\Kate-Cortex\vault`。
 
+## Web 版一键部署（Vercel，在线试用）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fhozin25%2FKate-Cortex)
+
+前端构建为静态站，后端以 Python serverless 函数（`api/index.py`）同仓部署：
+`vercel.json` 把 `/api/*` 重写到函数，前端 API 地址默认同源，零额外配置。
+
+注意这是**在线试用形态**，与本地优先的设计有本质差异：
+
+- serverless 无持久盘：数据落在函数实例的 `/tmp`，实例回收/冷启动后清空，
+  LLM API key 也需重新填写；正式沉淀知识请用桌面端（数据全本地）
+- scikit-learn 未打进函数（250MB 体积限制），语义空间三维视图自动降级空态
+- 多轮工具循环的长对话可能触到函数时限（`maxDuration` 60s）
+- 可选：环境变量 `KATE_API_TOKEN`（后端访问令牌）+ `VITE_API_TOKEN`（前端
+  构建时配对令牌）可挡匿名访问——令牌会打进公开 JS，仅是弱防护
+
+本地起 Web 版（代理到本机 sidecar 1738，免 CORS）：`cd frontend && pnpm dev:web`；纯静态产物：`pnpm build:web`（输出 `frontend/dist`，`VITE_API_BASE` 可指向任意远程后端，需后端配 `KATE_ALLOWED_ORIGINS` 放行源）。
+
 ## Claude Code 接入（MCP 服务端）
 
 ```

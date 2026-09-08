@@ -1,0 +1,14 @@
+# 与 backend/pyproject.toml 保持同步的 Vercel serverless 依赖清单。
+# 刻意排除：
+#   uvicorn        —— Vercel 自带 ASGI 适配，本地服务才需要
+#   scikit-learn   —— 连带 numpy/scipy 体积超出函数 250MB 限制，
+#                     projection.py 已对缺库降级（三维视图返回空态）
+fastapi>=0.115
+pydantic>=2.7
+python-frontmatter>=1.1
+jieba>=0.42
+pypinyin>=0.53
+openai>=3.1.0
+anthropic>=1.2.0
+sqlite-vec>=0.1.9
+mcp>=2.1,<3
