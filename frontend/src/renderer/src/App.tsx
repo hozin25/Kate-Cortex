@@ -21,6 +21,7 @@ import { GradientText } from '@renderer/components/common/Glass'
 import { ToastHost } from '@renderer/components/common/ToastHost'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useChatStore } from '@renderer/stores/chat'
+import { useLibraryStore } from '@renderer/stores/library'
 import { cn } from '@renderer/lib/utils'
 
 const NAV_ITEMS = [
@@ -121,6 +122,7 @@ function GlobalShortcuts(): null {
   const navigate = useNavigate()
   const createSession = useChatStore((s) => s.createSession)
   const settings = useSettingsStore((s) => s.settings)
+  const requestFocusSearch = useLibraryStore((s) => s.requestFocusSearch)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -128,11 +130,15 @@ function GlobalShortcuts(): null {
         e.preventDefault()
         void createSession(settings?.default_provider ?? 'deepseek').catch(() => undefined)
         navigate('/')
+      } else if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        requestFocusSearch()
+        navigate('/library')
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [createSession, navigate, settings?.default_provider])
+  }, [createSession, navigate, settings?.default_provider, requestFocusSearch])
 
   return null
 }

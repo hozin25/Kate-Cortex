@@ -9,6 +9,9 @@ interface LibraryState {
   collectionFilter: string | null
   query: string
   loading: boolean
+  /** Ctrl+K 聚焦搜索框的信号：>0 时 LibraryPage 聚焦搜索框并清零 */
+  focusSearchTick: number
+  requestFocusSearch: () => void
   load: () => Promise<void>
   setCollectionFilter: (collection: string | null) => void
   setQuery: (q: string) => void
@@ -25,6 +28,11 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   collectionFilter: null,
   query: '',
   loading: false,
+  focusSearchTick: 0,
+
+  requestFocusSearch: () => {
+    set({ focusSearchTick: get().focusSearchTick + 1 })
+  },
 
   load: async () => {
     const collections = await api.get<CollectionCount[]>('/collections')

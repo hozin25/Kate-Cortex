@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { FolderOpen, Library, List, Move3d, Pencil, Plus, Search, Trash2, X } from 'lucide-react'
@@ -14,6 +14,8 @@ type LibraryView = 'list' | 'graph'
 export function LibraryPage(): React.JSX.Element {
   const store = useLibraryStore()
   const { items, total, collections, collectionFilter, query, loading } = store
+  const searchRef = useRef<HTMLInputElement>(null)
+  const focusSearchTick = useLibraryStore((s) => s.focusSearchTick)
   const [searchParams, setSearchParams] = useSearchParams()
   const view: LibraryView = searchParams.get('view') === 'graph' ? 'graph' : 'list'
   const [searchDraft, setSearchDraft] = useState(query)
@@ -36,6 +38,15 @@ export function LibraryPage(): React.JSX.Element {
       .catch((err) => toast.error(err instanceof Error ? err.message : '知识库加载失败'))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams])
+
+  // Ctrl+K 聚焦信号（App.tsx GlobalShortcuts 触发）
+  useEffect(() => {
+    if (focusSearchTick > 0) {
+      searchRef.current?.focus()
+      searchRef.current?.select()
+      useLibraryStore.setState({ focusSearchTick: 0 })
+    }
+  }, [focusSearchTick])
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -133,6 +144,7 @@ export function LibraryPage(): React.JSX.Element {
             <div className="glass flex min-w-56 flex-1 items-center gap-2 rounded-xl px-3 py-2">
               <Search className="size-4 shrink-0 text-zinc-500" />
               <input
+                ref={searchRef}
                 value={searchDraft}
                 onChange={(e) => setSearchDraft(e.target.value)}
                 placeholder="全文搜索标题、正文…"
