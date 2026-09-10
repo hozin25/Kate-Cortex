@@ -11,7 +11,7 @@ import { MemoryCard } from '@renderer/components/chat/MemoryCard'
 import { MemoryRefChips } from '@renderer/components/chat/MemoryRefChips'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { GradientText } from '@renderer/components/common/Glass'
-import { useChatStore } from '@renderer/stores/chat'
+import { useChatStore, pickStartProvider } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUiStore } from '@renderer/stores/ui'
 import { toast } from '@renderer/stores/toast'
@@ -88,7 +88,7 @@ export function ChatPage(): React.JSX.Element {
         <button
           onClick={() =>
             void store
-              .createSession(settings?.default_provider ?? 'deepseek')
+              .createSession(pickStartProvider(settings))
               .catch((err) =>
                 toast.error(err instanceof Error ? err.message : '创建会话失败')
               )

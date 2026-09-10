@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { Check, MessageSquarePlus, Pencil, Trash2 } from 'lucide-react'
-import { useChatStore } from '@renderer/stores/chat'
+import { useChatStore, pickStartProvider } from '@renderer/stores/chat'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUiStore } from '@renderer/stores/ui'
 import { toast } from '@renderer/stores/toast'
@@ -24,9 +24,8 @@ export function SessionSidebar(): React.JSX.Element {
   }, [loadSessions])
 
   const handleCreate = async (): Promise<void> => {
-    const provider = settings?.default_provider ?? 'deepseek'
     try {
-      await createSession(provider)
+      await createSession(pickStartProvider(settings))
       setSessionsOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '创建会话失败')

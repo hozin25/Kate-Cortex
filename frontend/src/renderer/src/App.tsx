@@ -17,6 +17,7 @@ import { EntryDetailPage } from '@renderer/pages/EntryDetailPage'
 import { EntryEditPage } from '@renderer/pages/EntryEditPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
 import { SessionSidebar } from '@renderer/components/chat/SessionSidebar'
+import { pickStartProvider } from '@renderer/stores/chat'
 import { GradientText } from '@renderer/components/common/Glass'
 import { ToastHost } from '@renderer/components/common/ToastHost'
 import { useSettingsStore } from '@renderer/stores/settings'
@@ -200,7 +201,7 @@ function GlobalShortcuts(): null {
     const onKey = (e: KeyboardEvent): void => {
       if (e.ctrlKey && e.key.toLowerCase() === 'n') {
         e.preventDefault()
-        void createSession(settings?.default_provider ?? 'deepseek').catch(() => undefined)
+        void createSession(pickStartProvider(settings)).catch(() => undefined)
         navigate('/')
       } else if (e.ctrlKey && e.key.toLowerCase() === 'k') {
         e.preventDefault()

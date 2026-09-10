@@ -208,6 +208,9 @@ class ProjectionOut(BaseModel):
 
 class ProviderTestIn(BaseModel):
     provider: ProviderName
+    # 可选：直接测设置页里未保存的草稿 key（缺省测已保存的）
+    key: str | None = None
+    model: str | None = None
 
 
 class TrashOut(BaseModel):

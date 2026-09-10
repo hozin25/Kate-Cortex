@@ -420,12 +420,43 @@ class TestProviderTest:
         assert resp.json()["ok"] is True
         assert resp.json()["reply"] == "pong"
 
-    def test_provider_failure_returns_502(self, client):
+    def test_provider_failure_returns_message(self, client):
         client.put("/api/settings", json={"provider_keys": {"glm": "sk-123"}})
         fake = FakeProvider([RuntimeError("auth failed")])
         client.app.state.provider_factory = lambda name, model=None: fake
 
         resp = client.post("/api/providers/test", json={"provider": "glm"})
 
-        assert resp.status_code == 502
+        assert resp.status_code == 200
         assert resp.json()["ok"] is False
+        assert "auth failed" in resp.json()["message"]
+
+    def test_missing_key_returns_message(self, client):
+        resp = client.post("/api/providers/test", json={"provider": "glm-coding"})
+
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+        assert "glm-coding" in resp.json()["message"]
+
+    def test_draft_key_tested_without_saving(self, client, monkeypatch):
+        sent = {}
+        fake = FakeProvider([TextDelta("pong"), Done("stop")])
+
+        def fake_create(name, key, model):
+            sent.update(name=name, key=key, model=model)
+            return fake
+
+        monkeypatch.setattr(
+            "kate_cortex.routes.settings.create_provider", fake_create
+        )
+
+        resp = client.post(
+            "/api/providers/test",
+            json={"provider": "glm-coding", "key": "sk-draft"},
+        )
+
+        # 草稿 key 走 create_provider 直测，不读已保存配置；model 回落该服务商默认值
+        assert sent == {"name": "glm-coding", "key": "sk-draft", "model": "glm-5.3"}
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+        assert resp.json()["reply"] == "pong"

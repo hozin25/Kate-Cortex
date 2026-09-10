@@ -1,8 +1,13 @@
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from ..models import ProviderTestIn, SettingsOut, SettingsUpdate
-from ..providers import MODEL_CATALOG, REGISTRY, vision_supported
+from ..providers import (
+    DEFAULT_MODELS,
+    MODEL_CATALOG,
+    REGISTRY,
+    create_provider,
+    vision_supported,
+)
 from ..providers.base import Done, ProviderError, TextDelta
 
 router = APIRouter(tags=["settings"])
@@ -50,12 +55,23 @@ def update_settings(payload: SettingsUpdate, request: Request):
 
 @router.post("/providers/test")
 def test_provider(payload: ProviderTestIn, request: Request):
+    """连通性测试：结果统一 200 + {ok, message}（测试不通过不是传输层错误，
+    且 message 会直接展示给用户）。带 key/model 时测的是设置页未保存的草稿。"""
+    settings = request.app.state.settings_service.get_all()
     try:
-        provider = request.app.state.provider_factory(payload.provider)
+        if payload.key:
+            model = payload.model or (
+                settings["default_model"]
+                if settings["default_provider"] == payload.provider
+                else None
+            )
+            provider = create_provider(
+                payload.provider, payload.key, model or DEFAULT_MODELS[payload.provider]
+            )
+        else:
+            provider = request.app.state.provider_factory(payload.provider)
     except ProviderError as exc:
-        return JSONResponse(
-            status_code=502, content={"ok": False, "message": str(exc)}
-        )
+        return {"ok": False, "message": str(exc)}
 
     parts: list[str] = []
     try:
@@ -65,7 +81,5 @@ def test_provider(payload: ProviderTestIn, request: Request):
             elif isinstance(event, Done):
                 break
     except Exception as exc:
-        return JSONResponse(
-            status_code=502, content={"ok": False, "message": str(exc)}
-        )
+        return {"ok": False, "message": str(exc)}
     return {"ok": True, "model": provider.model, "reply": "".join(parts)[:200]}

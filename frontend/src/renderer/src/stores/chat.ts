@@ -3,6 +3,7 @@ import { api } from '@renderer/api/client'
 import { postSse } from '@renderer/api/sse'
 import { toast } from '@renderer/stores/toast'
 import type {
+  AppSettings,
   ChatMessage,
   ChatSession,
   Citation,
@@ -12,6 +13,25 @@ import type {
   SavedPayload,
   SuggestPayload
 } from '@renderer/types'
+
+/** 新会话起始服务商的回退顺序（设置页展示顺序） */
+const START_FALLBACK_ORDER: ProviderName[] = [
+  'glm',
+  'siliconflow',
+  'modelscope',
+  'glm-coding',
+  'deepseek'
+]
+
+/** 默认服务商没配 key 时回退到任一已配置的服务商——
+ *  避免只填了「GLM 编程套餐」却在默认「GLM（智谱）」上报「未配置 key」 */
+export function pickStartProvider(settings: AppSettings | null | undefined): ProviderName {
+  const preferred = settings?.default_provider
+  const keys = settings?.provider_keys ?? {}
+  if (preferred && keys[preferred]) return preferred
+  const fallback = START_FALLBACK_ORDER.find((p) => keys[p])
+  return fallback ?? preferred ?? 'deepseek'
+}
 
 interface ChatState {
   sessions: ChatSession[]

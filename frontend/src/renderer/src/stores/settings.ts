@@ -11,7 +11,8 @@ interface SettingsState {
   update: (
     patch: Partial<Omit<AppSettings, 'provider_keys'>> & { provider_keys?: Record<string, string> }
   ) => Promise<void>
-  testProvider: (provider: ProviderName) => Promise<void>
+  /** key 缺省时测已保存的；传入草稿 key 可在保存前直接测 */
+  testProvider: (provider: ProviderName, key?: string) => Promise<void>
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -40,20 +41,24 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  testProvider: async (provider) => {
+  testProvider: async (provider, key) => {
     set({ testStatus: { ...get().testStatus, [provider]: null } })
     let result: { ok: boolean; message: string }
     try {
       const resp = await fetch(apiUrl('/providers/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider })
+        body: JSON.stringify(key ? { provider, key } : { provider })
       })
       const body = await resp.json()
       result =
         resp.ok && body?.ok
           ? { ok: true, message: `连通正常（${body.reply ?? ''}）` }
-          : { ok: false, message: String(body?.detail ?? `HTTP ${resp.status}`) }
+          : {
+              ok: false,
+              // 后端把真实原因放在 message（如「未配置 key」），detail 兼容 HTTPException
+              message: String(body?.message ?? body?.detail ?? `HTTP ${resp.status}`)
+            }
     } catch (err) {
       result = { ok: false, message: err instanceof Error ? err.message : '网络错误' }
     }

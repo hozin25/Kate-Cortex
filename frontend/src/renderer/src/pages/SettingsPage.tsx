@@ -275,7 +275,9 @@ export function SettingsPage(): React.JSX.Element {
                         保存
                       </button>
                       <button
-                        onClick={() => void testProvider(p.name)}
+                        onClick={() =>
+                          void testProvider(p.name, draftKeys[p.name]?.trim() || undefined)
+                        }
                         disabled={!stored && !keyChanged(p.name)}
                         className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40 sm:flex-none"
                       >
