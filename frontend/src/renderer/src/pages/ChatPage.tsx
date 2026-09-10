@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
-import { MessagesSquare, PanelLeftOpen, Search } from 'lucide-react'
+import { MessagesSquare, MessageSquarePlus, PanelLeftOpen, Search } from 'lucide-react'
 import { api } from '@renderer/api/client'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
@@ -71,7 +71,7 @@ export function ChatPage(): React.JSX.Element {
 
   if (!currentId) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-6">
+      <div className="flex h-full flex-col items-center justify-center gap-6 px-6">
         <EmptyState
           icon={<MessagesSquare className="size-6" />}
           title={
@@ -81,10 +81,31 @@ export function ChatPage(): React.JSX.Element {
           }
           hint={
             settings?.provider_keys && Object.keys(settings.provider_keys).length > 0
-              ? '左侧点击「新会话」，聊聊项目、记下想法；说「记一下」就能存进知识库。'
+              ? '点击「新会话」开始，聊聊项目、记下想法；说「记一下」就能存进知识库。'
               : 'Kate 需要 DeepSeek 或 GLM 的 API Key 才能对话，配置后即可开始。'
           }
         />
+        <button
+          onClick={() =>
+            void store
+              .createSession(settings?.default_provider ?? 'deepseek')
+              .catch((err) =>
+                toast.error(err instanceof Error ? err.message : '创建会话失败')
+              )
+          }
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-aurora-indigo/30 bg-gradient-to-r from-aurora-indigo/20 to-aurora-violet/15 px-5 py-2.5 text-sm font-medium text-zinc-100 transition hover:brightness-125"
+        >
+          <MessageSquarePlus className="size-4" />
+          新会话
+        </button>
+        {store.sessions.length > 0 && (
+          <button
+            onClick={() => useUiStore.getState().setSessionsOpen(true)}
+            className="text-xs text-zinc-500 underline decoration-dotted transition hover:text-zinc-300 md:hidden"
+          >
+            查看历史会话
+          </button>
+        )}
       </div>
     )
   }
