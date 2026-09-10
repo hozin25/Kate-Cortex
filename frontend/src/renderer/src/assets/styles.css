@@ -190,6 +190,13 @@ body {
   pointer-events: none;
 }
 
+/* ── 密钥输入掩码：用 -webkit-text-security 替代 type=password，
+   部分国产浏览器内核对 password 输入框长按只给「自动填充」不给「粘贴」，
+   普通文本框则正常弹出完整选择菜单（配合 SecretInput 使用） ── */
+.kc-masked {
+  -webkit-text-security: disc;
+}
+
 /* ── 玻璃面板 ── */
 .glass {
   background: var(--kc-glass-bg);

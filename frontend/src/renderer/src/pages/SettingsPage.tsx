@@ -57,11 +57,69 @@ const EMBED_PROVIDERS: {
   { name: 'siliconflow', label: '硅基流动（bge-m3 免费）', modelHint: 'BAAI/bge-m3' }
 ]
 
+/** 内核是否支持 -webkit-text-security（Chromium/WebKit 支持，Firefox 不支持） */
+const TEXT_SECURITY_OK =
+  typeof CSS !== 'undefined' &&
+  typeof CSS.supports === 'function' &&
+  CSS.supports('-webkit-text-security', 'disc')
+
+interface SecretInputProps {
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  visible: boolean
+  onToggleVisible?: () => void
+  className?: string
+}
+
+/** 密钥输入框：默认用文本框 + CSS 掩码显示圆点，而非 type=password——
+ *  部分国产浏览器内核对 password 输入框长按只弹「自动填充」没有「粘贴」；
+ *  不支持掩码属性的内核（Firefox）回落 type=password。 */
+function SecretInput({
+  value,
+  onChange,
+  placeholder,
+  visible,
+  onToggleVisible,
+  className
+}: SecretInputProps): React.JSX.Element {
+  return (
+    <div className={cn('relative', className)}>
+      <input
+        type={TEXT_SECURITY_OK ? 'text' : 'password'}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete="off"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        className={cn(
+          'glass-deep w-full rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600',
+          TEXT_SECURITY_OK && !visible && 'kc-masked',
+          onToggleVisible && 'pr-9'
+        )}
+      />
+      {onToggleVisible && (
+        <button
+          onClick={onToggleVisible}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+          aria-label="显示/隐藏"
+        >
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function SettingsPage(): React.JSX.Element {
   const { settings, load, update, testProvider, testStatus } = useSettingsStore()
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({})
   const [draftModel, setDraftModel] = useState('')
   const [visible, setVisible] = useState<Record<string, boolean>>({})
+  const [embedKeyVisible, setEmbedKeyVisible] = useState(false)
+  const [mcpVisible, setMcpVisible] = useState(false)
   const [vecStatus, setVecStatus] = useState<EmbeddingStatus | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [draftEmbedKey, setDraftEmbedKey] = useState('')
@@ -191,26 +249,16 @@ export function SettingsPage(): React.JSX.Element {
                 <div key={p.name}>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
                     <span className="shrink-0 text-[13px] text-zinc-300 sm:w-24">{p.label}</span>
-                    <div className="relative w-full flex-1">
-                      <input
-                        type={visible[p.name] ? 'text' : 'password'}
-                        value={draftKeys[p.name]}
-                        onChange={(e) => setDraftKeys({ ...draftKeys, [p.name]: e.target.value })}
-                        placeholder={stored ? '已保存（输入以覆盖）' : p.keyHint}
-                        className="glass-deep w-full rounded-xl px-3 py-2 pr-9 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
-                      />
-                      <button
-                        onClick={() => setVisible({ ...visible, [p.name]: !visible[p.name] })}
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
-                        aria-label="显示/隐藏"
-                      >
-                        {visible[p.name] ? (
-                          <EyeOff className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
-                      </button>
-                    </div>
+                    <SecretInput
+                      className="w-full flex-1"
+                      value={draftKeys[p.name] ?? ''}
+                      onChange={(v) => setDraftKeys({ ...draftKeys, [p.name]: v })}
+                      placeholder={stored ? '已保存（输入以覆盖）' : p.keyHint}
+                      visible={visible[p.name] ?? false}
+                      onToggleVisible={() =>
+                        setVisible({ ...visible, [p.name]: !visible[p.name] })
+                      }
+                    />
                     <div className="flex gap-2 sm:contents">
                       <button
                         onClick={() =>
@@ -380,17 +428,16 @@ export function SettingsPage(): React.JSX.Element {
           </div>
           {settings.embedding_provider === 'siliconflow' && (
             <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
-              <div className="relative w-full flex-1">
-                <input
-                  type="password"
-                  value={draftEmbedKey}
-                  onChange={(e) => setDraftEmbedKey(e.target.value)}
-                  placeholder={
-                    settings.embedding_api_key ? '已保存（输入以覆盖）' : '硅基流动 API Key（sk-…）'
-                  }
-                  className="glass-deep w-full rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
-                />
-              </div>
+              <SecretInput
+                className="w-full flex-1"
+                value={draftEmbedKey}
+                onChange={setDraftEmbedKey}
+                placeholder={
+                  settings.embedding_api_key ? '已保存（输入以覆盖）' : '硅基流动 API Key（sk-…）'
+                }
+                visible={embedKeyVisible}
+                onToggleVisible={() => setEmbedKeyVisible(!embedKeyVisible)}
+              />
               <button
                 onClick={() =>
                   void handleSave({ embedding_api_key: draftEmbedKey.trim() }).then(loadVecStatus)
@@ -423,14 +470,15 @@ export function SettingsPage(): React.JSX.Element {
             （在高德开放平台创建「Web 服务」Key 后按其 MCP 文档拼接）。留空即停用。
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
-            <input
-              type="password"
+            <SecretInput
+              className="w-full flex-1"
               value={draftMcpUrl}
-              onChange={(e) => setDraftMcpUrl(e.target.value)}
+              onChange={setDraftMcpUrl}
               placeholder={
                 settings.mcp_url ? '已保存（输入以覆盖）' : 'MCP 端点 URL（https://…?key=…）'
               }
-              className="glass-deep w-full flex-1 rounded-xl px-3 py-2 font-mono text-[13px] text-zinc-200 outline-none placeholder:font-sans placeholder:text-zinc-600"
+              visible={mcpVisible}
+              onToggleVisible={() => setMcpVisible(!mcpVisible)}
             />
             <div className="flex gap-2 sm:contents">
               <button
