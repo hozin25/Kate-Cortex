@@ -1,22 +1,33 @@
-"""FastAPI 应用入口：uvicorn kate_cortex.main:app --port 1738"""
+"""FastAPI 应用入口：uvicorn kate_cortex.main:app --port 1738
+
+双模式（config.is_multiuser）：
+- 单用户（默认，桌面/dev/Vercel）：启动时装配一套全局服务到 app.state，
+  可选 KATE_API_TOKEN 本地令牌鉴权
+- 多用户（KATE_DATA_DIR 已设置）：不打开任何单用户数据库，会话中间件按
+  cookie 鉴权并注入该用户的服务集（multiuser.py），可选托管前端静态文件
+"""
 
 import logging
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from . import __version__
+from .auth import UsersStore
 from .chat.service import ChatService
-from .config import Config, load_config
+from .config import Config, is_multiuser, load_config
 from .db import connect as db_connect
+from .multiuser import UserRegistry, make_session_middleware
 from .providers import ProviderFactory
 from .providers.embedding import make_embedder_factory
 from .projection import ProjectionCache
 from .search import Search
 from .settings import SettingsService
-from .storage import Storage
+from .storage import Storage, initialize_storage
 from .vectors import VectorIndex
 
 logger = logging.getLogger(__name__)
@@ -34,7 +45,6 @@ AUTH_EXEMPT_PATHS = ("/api/health",)
 
 
 def create_app(config: Config | None = None) -> FastAPI:
-    config = config or load_config()
     app = FastAPI(title=APP_NAME, version=__version__)
     app.add_middleware(
         CORSMiddleware,
@@ -43,13 +53,26 @@ def create_app(config: Config | None = None) -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.state.api_token = os.environ.get("KATE_API_TOKEN") or None
+
+    if is_multiuser():
+        _wire_multiuser(app)
+    else:
+        _wire_single_user(app, config or load_config())
+
+    _include_routers(app)
+    if is_multiuser():
+        # mount 在路由之后注册：/api 先匹配到 API 路由，其余路径走静态文件
+        _mount_frontend(app)
+    return app
+
+
+def _wire_single_user(app: FastAPI, config: Config) -> None:
     # 本地 API 鉴权：绑定 127.0.0.1 只挡外网，挡不住本机其他进程读 key/删库。
     # Electron sidecar（阶段 5）启动时生成一次性随机 token 经环境变量注入；
     # 未设置则不启用（当前 dev 手动 uv run 的既有工作流不变）
-    api_token = os.environ.get("KATE_API_TOKEN") or None
-    app.state.api_token = api_token
-    if api_token:
-        app.middleware("http")(make_auth_middleware(api_token))
+    if app.state.api_token:
+        app.middleware("http")(make_auth_middleware(app.state.api_token))
     database = db_connect(config.db_path)
     settings_service = SettingsService(database.conn)
     vector_index = (
@@ -68,7 +91,7 @@ def create_app(config: Config | None = None) -> FastAPI:
         search=Search(database.conn),
         vectors=vector_index,
     )
-    _run_startup_migrations(database, storage, settings_service)
+    initialize_storage(database, storage, settings_service)
     app.state.config = config
     app.state.db = database
     app.state.storage = storage
@@ -78,8 +101,25 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.vector_index = vector_index
     app.state.projection = projection
 
+
+def _wire_multiuser(app: FastAPI) -> None:
+    data_dir = Path(os.environ["KATE_DATA_DIR"])
+    users_store = UsersStore(data_dir / "users.sqlite")
+    registry = UserRegistry(data_dir)
+    app.state.users_store = users_store
+    app.state.registry = registry
+    app.middleware("http")(make_session_middleware(users_store, registry))
+    _warm_jieba()
+    if not os.environ.get("KATE_SECRET_KEY"):
+        logger.warning(
+            "多用户模式未设置 KATE_SECRET_KEY，用户 API Key 将明文存储在服务器磁盘"
+        )
+
+
+def _include_routers(app: FastAPI) -> None:
     from .routes import (
         attachments,
+        auth,
         chat,
         collections,
         embeddings,
@@ -93,6 +133,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     )
 
     app.include_router(health.router, prefix="/api")
+    app.include_router(auth.router, prefix="/api")
     app.include_router(entries.router, prefix="/api")
     app.include_router(collections.router, prefix="/api")
     app.include_router(sync.router, prefix="/api")
@@ -103,7 +144,25 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.include_router(importer.router, prefix="/api")
     app.include_router(attachments.router, prefix="/api")
     app.include_router(trash.router, prefix="/api")
-    return app
+
+
+def _mount_frontend(app: FastAPI) -> None:
+    """托管前端静态产物（KATE_FRONTEND_DIR）。应用用 hash 路由，深链恒为
+    /#/…，服务端只需 / 命中 index.html，无需 SPA rewrite"""
+    frontend_dir = os.environ.get("KATE_FRONTEND_DIR")
+    if frontend_dir and Path(frontend_dir).is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="web")
+        logger.info("已托管前端静态文件: %s", frontend_dir)
+
+
+def _warm_jieba() -> None:
+    """jieba 词典在首次分词时惰性加载（秒级），提前到启动避免首个请求卡顿"""
+    try:
+        import jieba
+
+        jieba.initialize()
+    except Exception as exc:  # pragma: no cover - 分词器缺失不应阻断启动
+        logger.warning("jieba 预热失败: %s", exc)
 
 
 def make_auth_middleware(api_token: str):
@@ -122,23 +181,6 @@ def make_auth_middleware(api_token: str):
         return await call_next(request)
 
     return verify_token
-
-
-def _run_startup_migrations(database, storage, settings_service) -> None:
-    """存量「个人信息」tag → 合集迁移（幂等，每次启动跑）；
-    v3 迁移当天 FTS 被重建为空表，需从 md 真相源全量重灌一次；
-    历史明文 API key 就地加密；回收站超期文件清理"""
-    storage.migrate_profile_to_collection()
-    if database.migrated_from is not None and database.migrated_from < 3:
-        storage.reindex()
-    reencrypted = settings_service.encrypt_existing_secrets()
-    if reencrypted:
-        logger.info("已将 %d 项历史明文凭据重写为 DPAPI 密文", reencrypted)
-    if settings_service.migrate_mcp_url():
-        logger.info("已将旧版单端点 mcp_url 迁移为 MCP 服务列表")
-    purged = storage.cleanup_trash()
-    if purged:
-        logger.info("回收站清理：%d 个超期文件已删除", purged)
 
 
 app = create_app()

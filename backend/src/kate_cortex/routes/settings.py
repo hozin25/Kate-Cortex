@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from ..models import ProviderTestIn, SettingsOut, SettingsUpdate
+from ..multiuser import get_services
 from ..providers import (
     DEFAULT_MODELS,
     MODEL_CATALOG,
@@ -17,7 +18,7 @@ router = APIRouter(tags=["settings"])
 def list_models(request: Request):
     """对话内模型切换的目录：按注册表顺序给出各 provider 的模型与 key 配置
     状态；vision 由 vision_supported 现算（与发图拦截同一判定）"""
-    keys = request.app.state.settings_service.get_all()["provider_keys"]
+    keys = get_services(request).settings_service.get_all()["provider_keys"]
     return {
         "providers": [
             {
@@ -35,21 +36,21 @@ def list_models(request: Request):
 
 @router.get("/settings", response_model=SettingsOut)
 def get_settings(request: Request):
-    result = request.app.state.settings_service.get_all()
+    result = get_services(request).settings_service.get_all()
     # 诚实化：返回实际生效路径（config 决定），而非从不生效的存储值
-    result["vault_path"] = str(request.app.state.storage.vault)
+    result["vault_path"] = str(get_services(request).storage.vault)
     return result
 
 
 @router.put("/settings", response_model=SettingsOut)
 def update_settings(payload: SettingsUpdate, request: Request):
     try:
-        updated = request.app.state.settings_service.update(
+        updated = get_services(request).settings_service.update(
             payload.model_dump(exclude_none=True)
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    updated["vault_path"] = str(request.app.state.storage.vault)
+    updated["vault_path"] = str(get_services(request).storage.vault)
     return updated
 
 
@@ -57,7 +58,7 @@ def update_settings(payload: SettingsUpdate, request: Request):
 def test_provider(payload: ProviderTestIn, request: Request):
     """连通性测试：结果统一 200 + {ok, message}（测试不通过不是传输层错误，
     且 message 会直接展示给用户）。带 key/model 时测的是设置页未保存的草稿。"""
-    settings = request.app.state.settings_service.get_all()
+    settings = get_services(request).settings_service.get_all()
     try:
         if payload.key:
             model = payload.model or (
@@ -69,7 +70,7 @@ def test_provider(payload: ProviderTestIn, request: Request):
                 payload.provider, payload.key, model or DEFAULT_MODELS[payload.provider]
             )
         else:
-            provider = request.app.state.provider_factory(payload.provider)
+            provider = get_services(request).provider_factory(payload.provider)
     except ProviderError as exc:
         return {"ok": False, "message": str(exc)}
 

@@ -15,6 +15,7 @@ dependencies = [
     "sqlite-vec>=0.1.9",
     "scikit-learn>=1.9.0",
     "mcp>=2.1,<3",  # v2 重命名了传输与字段（streamable_http_client / input_schema）
+    "cryptography>=42.0",  # 服务器端密钥加密（KATE_SECRET_KEY + Fernet）；Windows 桌面走 DPAPI 用不到
 ]
 
 [project.scripts]

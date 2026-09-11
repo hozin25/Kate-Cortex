@@ -1,0 +1,17 @@
+.git
+.zcode
+**/__pycache__
+**/*.pyc
+.venv
+**/.venv
+backend/.pytest_cache
+backend/build
+backend/dist
+backend/tests
+frontend/node_modules
+frontend/dist
+frontend/out
+frontend/release
+docs
+vault
+**/.DS_Store

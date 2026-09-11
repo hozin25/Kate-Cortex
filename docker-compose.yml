@@ -1,0 +1,20 @@
+# 部署：docker compose up -d --build
+# 首次启动前建议在 .env 里设置 KATE_INVITE_CODE 与 KATE_SECRET_KEY（见 README）
+services:
+  kate-cortex:
+    build: .
+    container_name: kate-cortex
+    ports:
+      - "8000:8000"
+    environment:
+      # 注册邀请码：设置后注册必须携带；留空则开放注册（不建议公网）
+      KATE_INVITE_CODE: ${KATE_INVITE_CODE:-}
+      # 用户 API Key 的服务端加密主密钥：任意长随机串；不设置则明文落盘（不建议）
+      KATE_SECRET_KEY: ${KATE_SECRET_KEY:-}
+      # 走 HTTPS 反代（Caddy/Nginx）时设 1，cookie 加 Secure
+      KATE_COOKIE_SECURE: ${KATE_COOKIE_SECURE:-0}
+      # 服务器上 MCP 接入默认禁止内网地址（SSRF 防护）；确需内网 MCP 设 1
+      KATE_MCP_ALLOW_PRIVATE: ${KATE_MCP_ALLOW_PRIVATE:-0}
+    volumes:
+      - ./.data:/data
+    restart: unless-stopped

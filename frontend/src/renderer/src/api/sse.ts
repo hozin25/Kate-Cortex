@@ -1,4 +1,7 @@
-const RUNTIME = typeof window !== 'undefined' ? window.api?.kateRuntime : undefined
+import { kateRuntime } from '@renderer/lib/runtime'
+import { notifyUnauthorized } from '@renderer/api/client'
+
+const RUNTIME = kateRuntime()
 const BASE = import.meta.env.VITE_API_BASE ?? `http://127.0.0.1:${RUNTIME?.apiPort ?? 1738}/api`
 const API_TOKEN = RUNTIME?.apiToken ?? import.meta.env.VITE_API_TOKEN
 
@@ -25,6 +28,7 @@ export async function postSse(
     signal
   })
   if (!resp.ok || !resp.body) {
+    if (resp.status === 401) notifyUnauthorized()
     let detail = `请求失败 (${resp.status})`
     try {
       const err = await resp.json()

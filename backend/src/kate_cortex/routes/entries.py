@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from ..models import EntryCreate, EntryListOut, EntryOut, EntrySummaryOut, EntryUpdate
+from ..multiuser import get_services
 from ..storage import EntryNotFound, StorageError
 
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -9,7 +10,7 @@ router = APIRouter(prefix="/entries", tags=["entries"])
 @router.post("", status_code=201, response_model=EntryOut)
 def create_entry(payload: EntryCreate, request: Request):
     try:
-        entry = request.app.state.storage.create_entry(**payload.model_dump())
+        entry = get_services(request).storage.create_entry(**payload.model_dump())
     except StorageError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return EntryOut(**vars(entry))
@@ -23,7 +24,7 @@ def list_entries(
     limit: int = 50,
     offset: int = 0,
 ):
-    items, total = request.app.state.storage.list_entries(
+    items, total = get_services(request).storage.list_entries(
         collection=collection, q=q, limit=limit, offset=offset
     )
     return EntryListOut(
@@ -33,7 +34,7 @@ def list_entries(
 
 @router.get("/{id_or_slug}", response_model=EntryOut)
 def get_entry(id_or_slug: str, request: Request):
-    entry = request.app.state.storage.get_entry(id_or_slug)
+    entry = get_services(request).storage.get_entry(id_or_slug)
     if entry is None:
         raise HTTPException(status_code=404, detail="条目不存在")
     return EntryOut(**vars(entry))
@@ -42,7 +43,7 @@ def get_entry(id_or_slug: str, request: Request):
 @router.put("/{entry_id}", response_model=EntryOut)
 def update_entry(entry_id: str, payload: EntryUpdate, request: Request):
     try:
-        entry = request.app.state.storage.update_entry(
+        entry = get_services(request).storage.update_entry(
             entry_id, **payload.model_dump(exclude_none=True)
         )
     except EntryNotFound as exc:
@@ -55,7 +56,7 @@ def update_entry(entry_id: str, payload: EntryUpdate, request: Request):
 @router.delete("/{entry_id}", status_code=204)
 def delete_entry(entry_id: str, request: Request):
     try:
-        request.app.state.storage.delete_entry(entry_id)
+        get_services(request).storage.delete_entry(entry_id)
     except EntryNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -63,7 +64,7 @@ def delete_entry(entry_id: str, request: Request):
 @router.post("/{entry_id}/restore", response_model=EntryOut)
 def restore_entry(entry_id: str, request: Request):
     try:
-        entry = request.app.state.storage.restore_entry(entry_id)
+        entry = get_services(request).storage.restore_entry(entry_id)
     except EntryNotFound as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     except StorageError as exc:
@@ -73,7 +74,7 @@ def restore_entry(entry_id: str, request: Request):
 
 @router.get("/{entry_id}/links", response_model=list[EntrySummaryOut])
 def entry_links(entry_id: str, request: Request):
-    if request.app.state.storage.get_entry(entry_id) is None:
+    if get_services(request).storage.get_entry(entry_id) is None:
         raise HTTPException(status_code=404, detail="条目不存在")
-    backlinks = request.app.state.storage.backlinks(entry_id)
+    backlinks = get_services(request).storage.backlinks(entry_id)
     return [EntrySummaryOut(**vars(item)) for item in backlinks]

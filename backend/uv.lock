@@ -593,6 +593,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
+    { name = "cryptography" },
     { name = "fastapi" },
     { name = "jieba" },
     { name = "mcp" },
@@ -616,6 +617,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=1.2.0" },
+    { name = "cryptography", specifier = ">=42.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "jieba", specifier = ">=0.42" },
     { name = "mcp", specifier = ">=2.1,<3" },

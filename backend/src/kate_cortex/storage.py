@@ -734,3 +734,19 @@ def _dedup(items: list[str]) -> list[str]:
         if item:
             seen.setdefault(item, None)
     return list(seen)
+
+
+def initialize_storage(database, storage: "Storage", settings_service) -> None:
+    """数据目录的启动迁移（幂等，每个数据目录执行一次）。单用户在 create_app
+    启动时调用；多用户在 UserRegistry 首次构建该用户服务时调用"""
+    storage.migrate_profile_to_collection()
+    if database.migrated_from is not None and database.migrated_from < 3:
+        storage.reindex()
+    reencrypted = settings_service.encrypt_existing_secrets()
+    if reencrypted:
+        logger.info("已将 %d 项历史明文凭据重写为密文", reencrypted)
+    if settings_service.migrate_mcp_url():
+        logger.info("已将旧版单端点 mcp_url 迁移为 MCP 服务列表")
+    purged = storage.cleanup_trash()
+    if purged:
+        logger.info("回收站清理：%d 个超期文件已删除", purged)

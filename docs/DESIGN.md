@@ -754,6 +754,50 @@ Kate 在对话里调高德等外部工具）方向相反——客户端是"你�
 
 ---
 
+## 16. 云端多用户形态（2026-09-11 增补）
+
+与「本地优先」互补的第二形态：一台常驻服务器跑 Docker，浏览器/微信直接用，
+数据按账号隔离持久存储。**双模式由 `KATE_DATA_DIR` 是否设置决定**，单用户形态
+（桌面 sidecar / dev / Vercel 试用）零改动：
+
+- **运行模式**：未设 `KATE_DATA_DIR` → 单用户（启动装配一套全局服务到 app.state，
+  可选 KATE_API_TOKEN）；设置后 → 多用户（不打开任何单用户库，会话中间件按
+  cookie 鉴权，每请求注入该用户服务集）
+- **数据布局**：`<KATE_DATA_DIR>/users.sqlite`（账号 + 会话表，全局一个）+
+  `<KATE_DATA_DIR>/users/<user_id>/vault/`（每用户独立 vault，index.sqlite 在内，
+  沿用现有约定——FTS5/jieba/sqlite-vec 全部按连接工作，检索层零重写）
+- **认证**（`auth.py` + `routes/auth.py`）：用户名 + 口令（scrypt，stdlib）；
+  注册校验邀请码（env `KATE_INVITE_CODE`，设了才启用）；会话 token 随机 32B
+  走 HttpOnly cookie（`kate_session`，SameSite=Lax，`KATE_COOKIE_SECURE=1` 加
+  Secure），库存 SHA256，30 天滑动过期；`/api/health`、`/api/auth/*` 豁免
+- **每用户服务**（`multiuser.py`）：`UserServices` 八件套（config/db/storage/
+  chat_service/settings_service/provider_factory/vector_index/projection）与单用户
+  create_app 装配同构，抽出的 `initialize_storage`（启动迁移）每用户首次构建时
+  执行；`UserRegistry` 进程内 LRU（上限 64，锁保护，逐出即关连接）。路由统一经
+  `get_services(request)` 取服务：多用户从 `request.state.svc`，单用户回落
+  `app.state`——路由代码不感知模式
+- **密钥加密**：`security.py` 双通道——Windows DPAPI（桌面）；Linux 服务器
+  `KATE_SECRET_KEY`（任意随机串 sha256 → Fernet key，`fernet:` 前缀），未配置
+  明文 + 启动告警；解密兼容 dpapi:/fernet:/明文，`encrypt_existing_secrets`
+  迁移自动重写为当前平台形态
+- **SSRF 防护**（`mcp_registry.assert_public_endpoint`）：多用户模式下 MCP 接入
+  与调用前解析域名，内网/环回/链路本地地址一律拒绝（模型可能被网页内容诱导
+  让服务器访问内网）；单用户默认不启用（本机接 localhost MCP 合法），
+  `KATE_MCP_ALLOW_PRIVATE=1` 强制关闭
+- **前端**：`AuthGate` 分流——Electron（preload 注入 kateRuntime）直通应用壳；
+  Web 形态启动查 `/api/auth/me`，未登录只见登录页。401 全局拦截：client.ts
+  `request()` 单点回调（`setUnauthorizedHandler`）+ sse.ts / testProvider 裸
+  fetch 补齐 → 清空登录态切登录页。Web 构建同源 `/api`，cookie 自动携带零改动
+- **静态托管**：多用户模式下 `KATE_FRONTEND_DIR` 存在即 mount StaticFiles
+  （hash 路由无需 SPA rewrite），单进程同时服务前端与 /api，免 CORS
+- **部署**：多阶段 Dockerfile（node build:web → python slim + pip install backend，
+  `PIP_INDEX_URL` 可换国内源）+ docker-compose（卷 `./.data:/data`，env 邀请码/
+  主密钥/Secure cookie）；备份 = 备份数据目录
+- **v1 边界**：无邮箱验证/找回密码、无每用户配额、无管理后台；jieba 词典为
+  进程级共享（只读，天然多用户安全），用户逐出仅在 LRU 溢出时发生
+
+---
+
 ## 附录 A：参考项目
 
 | 项目 | 借鉴点 |

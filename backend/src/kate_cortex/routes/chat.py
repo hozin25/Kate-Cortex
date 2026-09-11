@@ -25,6 +25,7 @@ from ..models import (
     SessionOut,
     SessionUpdate,
 )
+from ..multiuser import get_services
 from ..providers import DEFAULT_MODELS, vision_supported
 from ..providers.base import ProviderError
 
@@ -35,7 +36,7 @@ HISTORY_ROUNDS = KEEP_ROUNDS  # 最近 N 轮原文；更早的由 summarizer 压
 
 @router.post("/sessions", status_code=201, response_model=SessionOut)
 def create_session(payload: SessionCreate, request: Request):
-    settings = request.app.state.settings_service.get_all()
+    settings = get_services(request).settings_service.get_all()
     if not settings["provider_keys"].get(payload.provider):
         raise HTTPException(
             status_code=400,
@@ -46,7 +47,7 @@ def create_session(payload: SessionCreate, request: Request):
         if settings["default_provider"] == payload.provider
         else DEFAULT_MODELS[payload.provider]
     )
-    session = request.app.state.chat_service.create_session(
+    session = get_services(request).chat_service.create_session(
         payload.provider, model, payload.title
     )
     return SessionOut(**vars(session))
@@ -54,14 +55,14 @@ def create_session(payload: SessionCreate, request: Request):
 
 @router.get("/sessions", response_model=list[SessionOut])
 def list_sessions(request: Request):
-    sessions = request.app.state.chat_service.list_sessions()
+    sessions = get_services(request).chat_service.list_sessions()
     return [SessionOut(**vars(s)) for s in sessions]
 
 
 @router.patch("/sessions/{session_id}", response_model=SessionOut)
 def update_session(session_id: str, payload: SessionUpdate, request: Request):
     """重命名 / 切换模型。切 provider 时按与创建会话相同的规则解析默认模型"""
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     session = chat_service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -73,7 +74,7 @@ def update_session(session_id: str, payload: SessionUpdate, request: Request):
     if "provider" in data or "model" in data:
         provider = data.get("provider", session.provider)
         model = data.get("model")
-        settings = request.app.state.settings_service.get_all()
+        settings = get_services(request).settings_service.get_all()
         if not settings["provider_keys"].get(provider):
             raise HTTPException(
                 status_code=400,
@@ -95,29 +96,29 @@ def update_session(session_id: str, payload: SessionUpdate, request: Request):
 @router.delete("/sessions/{session_id}", status_code=204)
 def delete_session(session_id: str, request: Request):
     try:
-        request.app.state.chat_service.delete_session(session_id)
+        get_services(request).chat_service.delete_session(session_id)
     except SessionNotFound:
         raise HTTPException(status_code=404, detail="会话不存在")
 
 
 @router.get("/sessions/{session_id}/messages", response_model=list[MessageOut])
 def list_messages(session_id: str, request: Request):
-    if request.app.state.chat_service.get_session(session_id) is None:
+    if get_services(request).chat_service.get_session(session_id) is None:
         raise HTTPException(status_code=404, detail="会话不存在")
-    messages = request.app.state.chat_service.list_messages(session_id)
+    messages = get_services(request).chat_service.list_messages(session_id)
     return [MessageOut(**vars(m)) for m in messages]
 
 
 @router.post("/sessions/{session_id}/chat")
 def chat(session_id: str, payload: ChatRequest, request: Request):
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     session = chat_service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
     if not payload.content.strip() and not payload.images:
         raise HTTPException(status_code=422, detail="消息内容不能为空")
 
-    settings = request.app.state.settings_service.get_all()
+    settings = get_services(request).settings_service.get_all()
     rag_enabled = (
         payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
     )
@@ -136,7 +137,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
                 ),
             )
         try:
-            rels = save_data_urls(request.app.state.storage.vault, payload.images)
+            rels = save_data_urls(get_services(request).storage.vault, payload.images)
         except AttachmentError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in rels)
@@ -145,7 +146,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     chat_service.append_message(session_id, "user", content)
     chat_service.ensure_title(session_id, strip_images(content))
     history = _history_messages(
-        chat_service, session_id, request.app.state.storage.vault, vision
+        chat_service, session_id, get_services(request).storage.vault, vision
     )
 
     return StreamingResponse(
@@ -165,7 +166,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
 @router.post("/sessions/{session_id}/regenerate")
 def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
     """重新生成：删除最后一条用户消息之后的回复，重新流式生成（不重复落用户消息）"""
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     session = chat_service.get_session(session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="会话不存在")
@@ -173,12 +174,12 @@ def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
     if last_user is None:
         raise HTTPException(status_code=404, detail="没有可重新生成的消息")
 
-    settings = request.app.state.settings_service.get_all()
+    settings = get_services(request).settings_service.get_all()
     chat_service.delete_messages_after(session_id, last_user.id)
     history = _history_messages(
         chat_service,
         session_id,
-        request.app.state.storage.vault,
+        get_services(request).storage.vault,
         vision_supported(session.provider, session.model),
     )
     return StreamingResponse(
@@ -202,7 +203,7 @@ def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
 @router.post("/sessions/{session_id}/messages/{message_id}/resend")
 def resend(session_id: str, message_id: str, payload: ChatResend, request: Request):
     """编辑用户消息并重发：原地更新内容，删除其后所有消息，重新流式生成"""
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     message = chat_service.get_message(message_id)
     if message is None or message.conversation_id != session_id:
         raise HTTPException(status_code=404, detail="消息不存在")
@@ -218,13 +219,13 @@ def resend(session_id: str, message_id: str, payload: ChatResend, request: Reque
         if refs:
             content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in refs)
 
-    settings = request.app.state.settings_service.get_all()
+    settings = get_services(request).settings_service.get_all()
     chat_service.update_message(message_id, content)
     chat_service.delete_messages_after(session_id, message_id)
     history = _history_messages(
         chat_service,
         session_id,
-        request.app.state.storage.vault,
+        get_services(request).storage.vault,
         vision_supported(session.provider, session.model),
     )
     return StreamingResponse(
@@ -247,7 +248,7 @@ def resend(session_id: str, message_id: str, payload: ChatResend, request: Reque
 
 @router.delete("/sessions/{session_id}/messages/{message_id}", status_code=204)
 def delete_message(session_id: str, message_id: str, request: Request):
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     message = chat_service.get_message(message_id)
     if message is None or message.conversation_id != session_id:
         raise HTTPException(status_code=404, detail="消息不存在")
@@ -266,12 +267,12 @@ def _stream_response(
 ):
     """chat / regenerate / resend 共用的 SSE 生成器：RAG 检索 → citations →
     agent loop（结束后由 run_agent_chat 落库 assistant 消息）"""
-    chat_service = request.app.state.chat_service
+    chat_service = get_services(request).chat_service
     session_id = session.id
 
     def generate():
         try:
-            provider = request.app.state.provider_factory(
+            provider = get_services(request).provider_factory(
                 session.provider, session.model
             )
         except ProviderError as exc:
@@ -279,18 +280,18 @@ def _stream_response(
             return
 
         snippets = (
-            retrieve(request.app.state.storage, strip_images(rag_content))
+            retrieve(get_services(request).storage, strip_images(rag_content))
             if rag_enabled
             else []
         )
         # 长对话摘要（IMP-7）：溢出轮压缩为背景注入 system prompt；失败降级硬截断
         conversation_summary = ensure_summary(chat_service, provider, session_id)
-        profile = user_profile(request.app.state.storage)
+        profile = user_profile(get_services(request).storage)
         memories = (
-            resident_memories(request.app.state.storage) if memory_enabled else []
+            resident_memories(get_services(request).storage) if memory_enabled else []
         )
         # 逐个服务拉工具表（带 mcp__<id>__ 前缀）；失败的服务降级并合并成一条通知
-        mcp = McpContext.load(request.app.state.settings_service)
+        mcp = McpContext.load(get_services(request).settings_service)
         if mcp.failures:
             yield sse_event(
                 "mcp_notice",
@@ -311,14 +312,14 @@ def _stream_response(
         )
         yield from run_agent_chat(
             provider=provider,
-            storage=request.app.state.storage,
+            storage=get_services(request).storage,
             chat_service=chat_service,
             session_id=session_id,
             history=history,
             rag_snippets=snippets,
             profile_snippets=profile,
             collection_names=[
-                name for name, _ in request.app.state.storage.list_collections()
+                name for name, _ in get_services(request).storage.list_collections()
             ],
             memory_snippets=memories,
             conversation_summary=conversation_summary,

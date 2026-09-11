@@ -10,14 +10,17 @@ import {
   Plug,
   Plus,
   Settings2,
-  Trash2
+  Trash2,
+  UserRound
 } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { useSettingsStore } from '@renderer/stores/settings'
+import { useAuthStore } from '@renderer/stores/auth'
 import { toast } from '@renderer/stores/toast'
 import { api } from '@renderer/api/client'
 import { cn, maskSecretUrl } from '@renderer/lib/utils'
+import { isElectron } from '@renderer/lib/runtime'
 import { getTheme, setTheme, type Theme } from '@renderer/lib/theme'
 import type {
   AppSettings,
@@ -119,6 +122,7 @@ function SecretInput({
 
 export function SettingsPage(): React.JSX.Element {
   const { settings, load, update, testProvider, testStatus } = useSettingsStore()
+  const { user, logout } = useAuthStore()
   const [draftKeys, setDraftKeys] = useState<Record<string, string>>({})
   const [draftModel, setDraftModel] = useState('')
   const [visible, setVisible] = useState<Record<string, boolean>>({})
@@ -277,6 +281,26 @@ export function SettingsPage(): React.JSX.Element {
     <div className="h-full overflow-y-auto px-4 py-4 sm:px-8 sm:py-6">
       <div className="mx-auto flex max-w-2xl flex-col gap-4">
         <h1 className="font-display text-lg text-zinc-100">设置</h1>
+
+        {!isElectron && user && user.id !== 'local' && (
+          <GlassPanel className="flex items-center justify-between p-5">
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
+                <UserRound className="size-4 text-aurora-cyan" />
+                账号
+              </div>
+              <p className="mt-1 text-xs leading-5 text-zinc-500">
+                已登录：{user.username}。数据与此账号绑定，退出后其他浏览器登录仍可见。
+              </p>
+            </div>
+            <button
+              onClick={() => void logout()}
+              className="shrink-0 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100"
+            >
+              退出登录
+            </button>
+          </GlassPanel>
+        )}
 
         <GlassPanel className="flex items-center justify-between p-5">
           <div>

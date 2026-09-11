@@ -8,6 +8,7 @@ from ..models import (
     ProjectionOut,
     ProjectionPointOut,
 )
+from ..multiuser import get_services
 from ..projection import ProjectionResult
 
 router = APIRouter(prefix="/embeddings", tags=["embeddings"])
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/embeddings", tags=["embeddings"])
 
 @router.get("/status", response_model=EmbeddingStatusOut)
 def embedding_status(request: Request):
-    index = request.app.state.vector_index
+    index = get_services(request).vector_index
     if index is None:
         # sqlite-vec 扩展不可用：功能整体缺席，前端据此禁用区块
         return EmbeddingStatusOut(available=False, indexed=0, total=_total(request))
@@ -25,12 +26,12 @@ def embedding_status(request: Request):
 
 @router.post("/rebuild", response_model=EmbeddingRebuildOut)
 def embedding_rebuild(request: Request):
-    index = request.app.state.vector_index
+    index = get_services(request).vector_index
     if index is None:
         raise HTTPException(status_code=503, detail="向量扩展不可用（sqlite-vec 未加载）")
     if not index.available:
         raise HTTPException(status_code=502, detail="未配置 GLM API key，无法生成向量")
-    result = index.rebuild(request.app.state.storage)
+    result = index.rebuild(get_services(request).storage)
     indexed, total = index.status()
     return EmbeddingRebuildOut(indexed=indexed, total=total, failed=result.failed)
 
@@ -48,11 +49,11 @@ def embedding_projection_refresh(request: Request):
 def _projection_response(request: Request, refresh: bool = False) -> ProjectionOut:
     """vec 扩展缺失 → available=false（对齐 status 的 200+available 语义，
     前端据此渲染空态而非报错）"""
-    if request.app.state.vector_index is None or request.app.state.projection is None:
+    if get_services(request).vector_index is None or get_services(request).projection is None:
         return ProjectionOut(
             available=False, method="unavailable", n=0, computed_ms=0, points=[]
         )
-    result: ProjectionResult = request.app.state.projection.get(refresh=refresh)
+    result: ProjectionResult = get_services(request).projection.get(refresh=refresh)
     return ProjectionOut(
         available=True,
         method=result.method,
@@ -74,5 +75,5 @@ def _projection_response(request: Request, refresh: bool = False) -> ProjectionO
 
 
 def _total(request: Request) -> int:
-    row = request.app.state.db.conn.execute("SELECT COUNT(*) FROM entries").fetchone()
+    row = get_services(request).db.conn.execute("SELECT COUNT(*) FROM entries").fetchone()
     return row[0]

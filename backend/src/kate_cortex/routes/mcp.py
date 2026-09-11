@@ -17,6 +17,7 @@ from ..mcp_registry import (
     status_of,
 )
 from ..models import McpServerCreate, McpServerUpdate
+from ..multiuser import get_services
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -27,7 +28,7 @@ def _server_out(server: dict) -> dict:
 
 @router.get("/servers")
 def list_servers(request: Request):
-    servers = load_servers(request.app.state.settings_service)
+    servers = load_servers(get_services(request).settings_service)
     return {"servers": [_server_out(s) for s in servers]}
 
 
@@ -36,7 +37,7 @@ def add_server(payload: McpServerCreate, request: Request):
     """添加服务：先真实连接验证（list_tools），失败返回 400 且不落配置"""
     try:
         server, raw_tools = install_server(
-            request.app.state.settings_service, payload.name, payload.url
+            get_services(request).settings_service, payload.name, payload.url
         )
     except McpInstallError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -45,7 +46,7 @@ def add_server(payload: McpServerCreate, request: Request):
 
 @router.patch("/servers/{server_id}")
 def update_server(server_id: str, payload: McpServerUpdate, request: Request):
-    settings_service = request.app.state.settings_service
+    settings_service = get_services(request).settings_service
     try:
         if payload.enabled is not None:
             set_server_enabled(settings_service, server_id, payload.enabled)
@@ -58,7 +59,7 @@ def update_server(server_id: str, payload: McpServerUpdate, request: Request):
 @router.delete("/servers/{server_id}", status_code=204)
 def delete_server(server_id: str, request: Request):
     try:
-        remove_server(request.app.state.settings_service, server_id)
+        remove_server(get_services(request).settings_service, server_id)
     except McpInstallError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -66,7 +67,7 @@ def delete_server(server_id: str, request: Request):
 @router.post("/servers/{server_id}/test")
 def test_server(server_id: str, request: Request):
     """连通性测试：结果统一 200 + {ok, message}（测试不通过不是传输层错误）"""
-    server = get_server(request.app.state.settings_service, server_id)
+    server = get_server(get_services(request).settings_service, server_id)
     if server is None:
         raise HTTPException(status_code=404, detail="未接入该服务")
     return check_server(server)

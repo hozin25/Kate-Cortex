@@ -16,14 +16,17 @@ import { TrashPage } from '@renderer/pages/TrashPage'
 import { EntryDetailPage } from '@renderer/pages/EntryDetailPage'
 import { EntryEditPage } from '@renderer/pages/EntryEditPage'
 import { SettingsPage } from '@renderer/pages/SettingsPage'
+import { LoginPage } from '@renderer/pages/LoginPage'
 import { SessionSidebar } from '@renderer/components/chat/SessionSidebar'
 import { pickStartProvider } from '@renderer/stores/chat'
 import { GradientText } from '@renderer/components/common/Glass'
+import { Spinner } from '@renderer/components/common/Badges'
 import { ToastHost } from '@renderer/components/common/ToastHost'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useChatStore } from '@renderer/stores/chat'
 import { useLibraryStore } from '@renderer/stores/library'
 import { useUiStore } from '@renderer/stores/ui'
+import { useAuthStore } from '@renderer/stores/auth'
 import { cn } from '@renderer/lib/utils'
 
 const NAV_ITEMS = [
@@ -37,6 +40,34 @@ export function App(): React.JSX.Element {
   return (
     <HashRouter>
       <div className="space-bg" />
+      <AuthGate />
+      <ToastHost />
+    </HashRouter>
+  )
+}
+
+/** 登录门卫：Electron 单用户直通应用壳；Web 形态先查会话，未登录只见登录页 */
+function AuthGate(): React.JSX.Element {
+  const { user, ready, ensureLoaded } = useAuthStore()
+
+  useEffect(() => {
+    void ensureLoaded().catch(() => undefined)
+  }, [ensureLoaded])
+
+  if (!ready) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <Spinner className="size-6 text-zinc-500" />
+      </div>
+    )
+  }
+  if (!user) return <LoginPage />
+  return <AppShell />
+}
+
+function AppShell(): React.JSX.Element {
+  return (
+    <>
       <div className="flex h-full">
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
@@ -57,10 +88,9 @@ export function App(): React.JSX.Element {
         </div>
       </div>
       <SessionsDrawer />
-      <ToastHost />
       <GlobalShortcuts />
       <SessionDeepLink />
-    </HashRouter>
+    </>
   )
 }
 

@@ -22,7 +22,8 @@
   验证接入（`install_mcp`），设置页可视化管理并实时展示每个服务可用/不可用；
   服务端（stdio）向 Claude Code / Cursor 暴露知识检索、沉淀与记忆工具
 - **多模型**：DeepSeek / GLM / GLM 编程套餐 / 硅基流动 / 魔搭，全部本地 key 直连
-- **安全**：API key DPAPI 加密落盘，本地 API token 鉴权，数据全本地
+- **安全**：API key DPAPI/Fernet 加密落盘，本地 API token 鉴权，数据全本地
+- **多用户云端版**：Docker 自托管，邀请码注册，每账号独立数据目录，换浏览器不丢数据
 
 ## 桌面端（Electron + Python sidecar）
 
@@ -69,6 +70,27 @@ cd frontend && pnpm build && pnpm exec electron-builder --win
   构建时配对令牌）可挡匿名访问——令牌会打进公开 JS，仅是弱防护
 
 本地起 Web 版（代理到本机 sidecar 1738，免 CORS）：`cd frontend && pnpm dev:web`；纯静态产物：`pnpm build:web`（输出 `frontend/dist`，`VITE_API_BASE` 可指向任意远程后端，需后端配 `KATE_ALLOWED_ORIGINS` 放行源）。
+
+## 云端多用户版（Docker 自托管）
+
+与「本地优先」互补的第二形态：部署在一台常驻服务器上，浏览器/微信里直接用，
+数据按账号隔离地存在服务器磁盘——不再是 serverless 临时盘，**换浏览器、换设备都不丢**。
+
+```bash
+# 1. 准备环境变量（.env）
+echo "KATE_INVITE_CODE=你的邀请码" >> .env   # 注册需邀请码；不设则开放注册（公网不建议）
+echo "KATE_SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(32))")" >> .env  # API Key 加密主密钥
+
+# 2. 构建并启动（国内构建慢可加 --build-arg PIP_INDEX_URL=镜像源，见 Dockerfile）
+docker compose up -d --build
+```
+
+访问 `http://服务器IP:8000`（前端由同一服务托管，登录态走 HttpOnly cookie）。
+生产建议套 HTTPS（Caddy/Nginx 反代）并在 `.env` 设 `KATE_COOKIE_SECURE=1`；备份 = 备份 `./.data` 目录。
+
+- 每账号一个独立数据目录（`./.data/users/<id>/vault/`），知识、记忆、会话、MCP 配置完全隔离
+- 服务器形态下 MCP 接入默认禁止内网地址（SSRF 防护），确需内网 MCP 设 `KATE_MCP_ALLOW_PRIVATE=1`
+- 桌面端与本仓库的 Vercel 在线试用不受影响（不设 `KATE_DATA_DIR` 即单用户模式）
 
 ## Claude Code 接入（MCP 服务端）
 

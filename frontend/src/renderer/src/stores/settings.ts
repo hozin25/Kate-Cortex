@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { api, apiUrl } from '@renderer/api/client'
+import { api, apiUrl, notifyUnauthorized } from '@renderer/api/client'
 import type { AppSettings, ProviderName } from '@renderer/types'
 
 interface SettingsState {
@@ -51,6 +51,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         body: JSON.stringify(key ? { provider, key } : { provider })
       })
       const body = await resp.json()
+      if (resp.status === 401) notifyUnauthorized()
       result =
         resp.ok && body?.ok
           ? { ok: true, message: `连通正常（${body.reply ?? ''}）` }

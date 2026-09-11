@@ -234,3 +234,18 @@ class TrashOut(BaseModel):
     title: str
     file_path: str
     deleted_at: str
+
+
+class AuthIn(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+    password: str = Field(min_length=1, max_length=128)
+
+
+class AuthRegisterIn(AuthIn):
+    invite_code: str | None = None
+
+
+class UserOut(BaseModel):
+    id: str
+    username: str
+    created_at: str

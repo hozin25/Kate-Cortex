@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 
 from ..attachments import ALLOWED_MEDIA
+from ..multiuser import get_services
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
@@ -12,7 +13,7 @@ _MEDIA_BY_EXT = {ext: media for media, ext in ALLOWED_MEDIA.items()}
 
 @router.get("/{rel_path:path}")
 def get_attachment(rel_path: str, request: Request):
-    base = (request.app.state.storage.vault / "attachments").resolve()
+    base = (get_services(request).storage.vault / "attachments").resolve()
     # markdown 引用自带 attachments/ 前缀，前端可直接拼 api/{引用}，此处容错剥离
     if rel_path.startswith("attachments/"):
         rel_path = rel_path[len("attachments/") :]
