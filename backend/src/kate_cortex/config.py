@@ -26,6 +26,12 @@ def load_config() -> Config:
     return Config(vault_path=vault, db_path=db_path, host=host, port=port)
 
 
+def is_multiuser() -> bool:
+    """多用户模式：KATE_DATA_DIR 已设置。数据布局 <data_dir>/users/<id>/vault/，
+    账号库 <data_dir>/users.sqlite；单用户形态（桌面/dev/Vercel）不设置该变量"""
+    return bool(os.environ.get("KATE_DATA_DIR"))
+
+
 def _default_vault() -> Path:
     if os.environ.get("KATE_PACKAGED") == "1" or getattr(sys, "frozen", False):
         return Path.home() / APP_DIR_NAME / "vault"

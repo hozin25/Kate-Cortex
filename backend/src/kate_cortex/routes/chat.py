@@ -15,7 +15,7 @@ from ..chat.memory import resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..chat.summarizer import KEEP_ROUNDS, ensure_summary
-from ..mcp_client import list_mcp_tools
+from ..mcp_registry import McpContext
 from ..models import (
     ChatRegenerate,
     ChatRequest,
@@ -122,7 +122,6 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
     )
     memory_enabled = settings.get("memory_enabled", True)
-    mcp_url = (settings.get("mcp_url") or "").strip()
     export_dir = (settings.get("export_dir") or "").strip() or None
 
     # 多模态：图片落盘 vault/attachments/，content 以 markdown 引用携带（本地可追溯）
@@ -157,7 +156,6 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             rag_content=content,
             rag_enabled=rag_enabled,
             memory_enabled=memory_enabled,
-            mcp_url=mcp_url,
             export_dir=export_dir,
         ),
         media_type="text/event-stream",
@@ -195,7 +193,6 @@ def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
                 else settings["rag_default"]
             ),
             memory_enabled=settings.get("memory_enabled", True),
-            mcp_url=(settings.get("mcp_url") or "").strip(),
             export_dir=(settings.get("export_dir") or "").strip() or None,
         ),
         media_type="text/event-stream",
@@ -242,7 +239,6 @@ def resend(session_id: str, message_id: str, payload: ChatResend, request: Reque
                 else settings["rag_default"]
             ),
             memory_enabled=settings.get("memory_enabled", True),
-            mcp_url=(settings.get("mcp_url") or "").strip(),
             export_dir=(settings.get("export_dir") or "").strip() or None,
         ),
         media_type="text/event-stream",
@@ -266,7 +262,6 @@ def _stream_response(
     rag_content: str,
     rag_enabled: bool,
     memory_enabled: bool,
-    mcp_url: str,
     export_dir: str | None,
 ):
     """chat / regenerate / resend 共用的 SSE 生成器：RAG 检索 → citations →
@@ -294,20 +289,17 @@ def _stream_response(
         memories = (
             resident_memories(request.app.state.storage) if memory_enabled else []
         )
-        mcp_tools: list[dict] = []
-        if mcp_url:
-            try:
-                mcp_tools = list_mcp_tools(mcp_url)
-            except Exception as exc:
-                yield sse_event(
-                    "mcp_notice",
-                    {
-                        "message": (
-                            "外部工具服务连接失败，本次回答没有实时数据："
-                            f"{exc}"
-                        )
-                    },
-                )
+        # 逐个服务拉工具表（带 mcp__<id>__ 前缀）；失败的服务降级并合并成一条通知
+        mcp = McpContext.load(request.app.state.settings_service)
+        if mcp.failures:
+            yield sse_event(
+                "mcp_notice",
+                {
+                    "message": "外部工具服务连接失败（"
+                    + "；".join(mcp.failures)
+                    + "），本次回答没有这些服务的实时数据"
+                },
+            )
         yield sse_event(
             "citations",
             {
@@ -331,8 +323,7 @@ def _stream_response(
             memory_snippets=memories,
             conversation_summary=conversation_summary,
             memory_enabled=memory_enabled,
-            mcp_tools=mcp_tools,
-            mcp_url=mcp_url if mcp_tools else None,
+            mcp=mcp,
             export_dir=export_dir,
         )
 

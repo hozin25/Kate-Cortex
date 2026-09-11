@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import {
   Eye,
   EyeOff,
@@ -8,20 +8,24 @@ import {
   KeyRound,
   Layers,
   Plug,
-  Settings2
+  Plus,
+  Settings2,
+  Trash2
 } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { toast } from '@renderer/stores/toast'
 import { api } from '@renderer/api/client'
-import { cn } from '@renderer/lib/utils'
+import { cn, maskSecretUrl } from '@renderer/lib/utils'
 import { getTheme, setTheme, type Theme } from '@renderer/lib/theme'
 import type {
   AppSettings,
   EmbeddingProviderName,
   EmbeddingRebuildResult,
   EmbeddingStatus,
+  McpServerStatus,
+  McpServerWithStatus,
   ProviderName
 } from '@renderer/types'
 
@@ -119,13 +123,17 @@ export function SettingsPage(): React.JSX.Element {
   const [draftModel, setDraftModel] = useState('')
   const [visible, setVisible] = useState<Record<string, boolean>>({})
   const [embedKeyVisible, setEmbedKeyVisible] = useState(false)
+  const [mcpServers, setMcpServers] = useState<McpServerWithStatus[]>([])
+  const [mcpLoading, setMcpLoading] = useState(true)
+  const [mcpTesting, setMcpTesting] = useState<Record<string, boolean>>({})
+  const [mcpRevealed, setMcpRevealed] = useState<Record<string, boolean>>({})
+  const [draftMcpName, setDraftMcpName] = useState('')
+  const [draftMcpUrl, setDraftMcpUrl] = useState('')
   const [mcpVisible, setMcpVisible] = useState(false)
+  const [addingMcp, setAddingMcp] = useState(false)
   const [vecStatus, setVecStatus] = useState<EmbeddingStatus | null>(null)
   const [rebuilding, setRebuilding] = useState(false)
   const [draftEmbedKey, setDraftEmbedKey] = useState('')
-  const [draftMcpUrl, setDraftMcpUrl] = useState('')
-  const [mcpTest, setMcpTest] = useState<{ ok: boolean; message: string } | null>(null)
-  const [testingMcp, setTestingMcp] = useState(false)
   const [draftExportDir, setDraftExportDir] = useState('')
   const [theme, setThemeState] = useState<Theme>(getTheme())
   const [draftObsidianDir, setDraftObsidianDir] = useState('')
@@ -169,6 +177,67 @@ export function SettingsPage(): React.JSX.Element {
       .catch(() => setVecStatus(null))
   }
 
+  const testMcpServer = useCallback((id: string): void => {
+    setMcpTesting((m) => ({ ...m, [id]: true }))
+    api
+      .post<McpServerStatus>(`/mcp/servers/${id}/test`)
+      .then((status) =>
+        setMcpServers((list) => list.map((s) => (s.id === id ? { ...s, status } : s)))
+      )
+      .catch((err) => toast.error(err instanceof Error ? err.message : '检测失败'))
+      .finally(() => setMcpTesting((m) => ({ ...m, [id]: false })))
+  }, [])
+
+  const loadMcpServers = useCallback(
+    (verify = false): void => {
+      api
+        .get<{ servers: McpServerWithStatus[] }>('/mcp/servers')
+        .then((r) => {
+          setMcpServers(r.servers)
+          if (verify) r.servers.forEach((s) => testMcpServer(s.id))
+        })
+        .catch(() => toast.error('MCP 服务列表加载失败'))
+        .finally(() => setMcpLoading(false))
+    },
+    [testMcpServer]
+  )
+
+  const addMcpServer = (): void => {
+    const name = draftMcpName.trim()
+    const url = draftMcpUrl.trim()
+    if (!name || !url) return
+    setAddingMcp(true)
+    api
+      .post<McpServerWithStatus & { tool_count: number }>('/mcp/servers', { name, url })
+      .then((server) => {
+        toast.success(`已接入「${server.name}」，${server.tool_count} 个工具可用`)
+        setDraftMcpName('')
+        setDraftMcpUrl('')
+        loadMcpServers()
+      })
+      .catch((err) => toast.error(err instanceof Error ? err.message : '接入失败'))
+      .finally(() => setAddingMcp(false))
+  }
+
+  const toggleMcpServer = (server: McpServerWithStatus): void => {
+    api
+      .patch<McpServerWithStatus>(`/mcp/servers/${server.id}`, {
+        enabled: !server.enabled
+      })
+      .then((updated) =>
+        setMcpServers((list) => list.map((s) => (s.id === server.id ? { ...s, ...updated } : s)))
+      )
+      .catch((err) => toast.error(err instanceof Error ? err.message : '操作失败'))
+  }
+
+  const removeMcpServer = (server: McpServerWithStatus): void => {
+    if (!window.confirm(`移除 MCP 服务「${server.name}」？对话中将不再调用它的工具。`)) return
+    api
+      .delete(`/mcp/servers/${server.id}`)
+      .then(() => setMcpServers((list) => list.filter((s) => s.id !== server.id)))
+      .catch((err) => toast.error(err instanceof Error ? err.message : '移除失败'))
+  }
+
   useEffect(() => {
     void load()
       .then(() => {
@@ -176,13 +245,14 @@ export function SettingsPage(): React.JSX.Element {
         if (loaded) {
           setDraftKeys(Object.fromEntries(PROVIDERS.map((p) => [p.name, ''])))
           setDraftModel(loaded.default_model)
-          setDraftMcpUrl(loaded.mcp_url ?? '')
           setDraftExportDir(loaded.export_dir ?? '')
         }
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : '设置加载失败'))
     loadVecStatus()
-  }, [load])
+    // verify=true：进设置页时把每个已接入服务实测一遍，状态即时可见
+    loadMcpServers(true)
+  }, [load, loadMcpServers])
 
   if (!settings) {
     return (
@@ -255,9 +325,7 @@ export function SettingsPage(): React.JSX.Element {
                       onChange={(v) => setDraftKeys({ ...draftKeys, [p.name]: v })}
                       placeholder={stored ? '已保存（输入以覆盖）' : p.keyHint}
                       visible={visible[p.name] ?? false}
-                      onToggleVisible={() =>
-                        setVisible({ ...visible, [p.name]: !visible[p.name] })
-                      }
+                      onToggleVisible={() => setVisible({ ...visible, [p.name]: !visible[p.name] })}
                     />
                     <div className="flex gap-2 sm:contents">
                       <button
@@ -366,8 +434,7 @@ export function SettingsPage(): React.JSX.Element {
             />
           </div>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
-            开启后，Kate
-            会在对话中自动记住关于你的重要事实（健康、计划、偏好），存入「记忆」合集，
+            开启后，Kate 会在对话中自动记住关于你的重要事实（健康、计划、偏好），存入「记忆」合集，
             并在之后的对话中自然地想起。每条记忆保存时会有提示、可撤销，也可在知识库中管理。
           </p>
         </GlassPanel>
@@ -466,71 +533,136 @@ export function SettingsPage(): React.JSX.Element {
             外部工具（MCP）
           </div>
           <p className="mt-1 text-xs leading-5 text-zinc-500">
-            填入 MCP 服务的 Streamable HTTP 端点（含 Key），Kate
-            即可调用其工具获取实时数据。例如高德地图：
-            <span className="font-mono text-zinc-400">https://mcp.amap.com/mcp?key=你的Key</span>
-            （在高德开放平台创建「Web 服务」Key 后按其 MCP 文档拼接）。留空即停用。
+            接入 MCP 服务后，Kate 对话即可调用其实时工具。可以直接在对话里说「帮我接入 高德地图
+            MCP」，把端点发给 Kate 即可自动验证并接入；也可以在下方手动添加。
           </p>
-          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+          <p className="mt-1 text-xs leading-5 text-zinc-500">
+            端点示例（高德地图）：
+            <span className="font-mono text-zinc-400">https://mcp.amap.com/mcp?key=你的Key</span>
+            （在高德开放平台创建「Web 服务」Key 后按其 MCP 文档拼接）。
+          </p>
+
+          <div className="mt-4 space-y-3">
+            {mcpLoading ? (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <Spinner className="size-3.5" />
+                加载中…
+              </div>
+            ) : (
+              mcpServers.map((server) => (
+                <div
+                  key={server.id}
+                  className={cn(
+                    'rounded-xl border border-white/[0.06] bg-white/[0.02] p-3',
+                    !server.enabled && 'opacity-55'
+                  )}
+                >
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 text-[13px] text-zinc-200">
+                        <span className="truncate">{server.name}</span>
+                        {!server.enabled && (
+                          <span className="shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] text-zinc-400">
+                            已停用
+                          </span>
+                        )}
+                      </div>
+                      <div
+                        className="mt-0.5 truncate font-mono text-[11px] text-zinc-500"
+                        title={mcpRevealed[server.id] ? server.url : undefined}
+                      >
+                        {mcpRevealed[server.id] ? server.url : maskSecretUrl(server.url)}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <button
+                        onClick={() =>
+                          setMcpRevealed((m) => ({ ...m, [server.id]: !m[server.id] }))
+                        }
+                        className="grid size-7 place-items-center rounded-lg text-zinc-500 transition hover:text-zinc-200"
+                        aria-label="显示/隐藏端点"
+                      >
+                        {mcpRevealed[server.id] ? (
+                          <EyeOff className="size-3.5" />
+                        ) : (
+                          <Eye className="size-3.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => testMcpServer(server.id)}
+                        disabled={mcpTesting[server.id]}
+                        className="flex items-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-2.5 py-1.5 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40"
+                      >
+                        {mcpTesting[server.id] ? (
+                          <Spinner className="size-3" />
+                        ) : (
+                          <Plug className="size-3" />
+                        )}
+                        检测
+                      </button>
+                      <ToggleSwitch
+                        checked={server.enabled}
+                        onChange={() => toggleMcpServer(server)}
+                      />
+                      <button
+                        onClick={() => removeMcpServer(server)}
+                        className="grid size-7 place-items-center rounded-lg text-zinc-500 transition hover:text-rose-300"
+                        aria-label="移除"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                  <p
+                    className={cn(
+                      'mt-1.5 text-xs',
+                      mcpTesting[server.id]
+                        ? 'text-zinc-500'
+                        : server.status
+                          ? server.status.ok
+                            ? 'text-emerald-300/90'
+                            : 'text-rose-300/90'
+                          : 'text-zinc-600'
+                    )}
+                  >
+                    {mcpTesting[server.id]
+                      ? '正在连接…'
+                      : server.status
+                        ? `${server.status.ok ? '✓ 可用' : '✕ 不可用'} · ${server.status.message}（${server.status.checked_at.replace('T', ' ')} 检测）`
+                        : '未检测：对话涉及实时数据时会自动探测'}
+                  </p>
+                </div>
+              ))
+            )}
+            {!mcpLoading && mcpServers.length === 0 && (
+              <p className="text-xs text-zinc-600">尚未接入任何 MCP 服务。</p>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <input
+              value={draftMcpName}
+              onChange={(e) => setDraftMcpName(e.target.value)}
+              placeholder="服务名（如：高德地图）"
+              className="glass-deep w-full rounded-xl px-3 py-2 text-[13px] text-zinc-200 outline-none placeholder:text-zinc-600 sm:w-40"
+            />
             <SecretInput
               className="w-full flex-1"
               value={draftMcpUrl}
               onChange={setDraftMcpUrl}
-              placeholder={
-                settings.mcp_url ? '已保存（输入以覆盖）' : 'MCP 端点 URL（https://…?key=…）'
-              }
+              placeholder="MCP 端点 URL（https://…?key=…）"
               visible={mcpVisible}
               onToggleVisible={() => setMcpVisible(!mcpVisible)}
             />
-            <div className="flex gap-2 sm:contents">
-              <button
-                onClick={() => {
-                  void handleSave({ mcp_url: draftMcpUrl.trim() }).then(() => setMcpTest(null))
-                }}
-                disabled={draftMcpUrl.trim() === (settings.mcp_url ?? '')}
-                className="flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40 sm:flex-none"
-              >
-                保存
-              </button>
-              <button
-                onClick={() => {
-                  setTestingMcp(true)
-                  setMcpTest(null)
-                  api
-                    .post<{ ok: boolean; message: string }>('/mcp/test')
-                    .then((r) => setMcpTest({ ok: r.ok, message: r.message }))
-                    .catch((err) =>
-                      setMcpTest({
-                        ok: false,
-                        message: err instanceof Error ? err.message : '网络错误'
-                      })
-                    )
-                    .finally(() => setTestingMcp(false))
-                }}
-                disabled={!settings.mcp_url || testingMcp}
-                className="flex flex-1 items-center justify-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40 sm:flex-none"
-              >
-                <Plug className="size-3.5" />
-                测试
-              </button>
-            </div>
-          </div>
-          {(mcpTest || settings.mcp_url) && (
-            <p
-              className={cn(
-                'mt-2 text-xs',
-                mcpTest
-                  ? mcpTest.ok
-                    ? 'text-emerald-300/90'
-                    : 'text-rose-300/90'
-                  : 'text-zinc-500'
-              )}
+            <button
+              onClick={() => void addMcpServer()}
+              disabled={addingMcp || !draftMcpName.trim() || !draftMcpUrl.trim()}
+              className="flex w-full shrink-0 items-center justify-center gap-1 rounded-xl border border-aurora-cyan/25 bg-aurora-cyan/10 px-3 py-2 text-xs text-aurora-cyan transition hover:bg-aurora-cyan/20 disabled:opacity-40 sm:w-auto"
             >
-              {mcpTest
-                ? `${mcpTest.ok ? '✓' : '✕'} ${mcpTest.message}`
-                : '已配置 MCP 端点，对话涉及景点、路线、天气时会自动调用实时查询。'}
-            </p>
-          )}
+              {addingMcp ? <Spinner className="size-3.5" /> : <Plus className="size-3.5" />}
+              添加
+            </button>
+          </div>
         </GlassPanel>
 
         <GlassPanel className="p-5">
@@ -593,7 +725,9 @@ export function SettingsPage(): React.JSX.Element {
               </div>
             </div>
             <div>
-              <div className="text-[13px] text-zinc-300">Kate-Cortex vault（从另一份数据目录合并）</div>
+              <div className="text-[13px] text-zinc-300">
+                Kate-Cortex vault（从另一份数据目录合并）
+              </div>
               <div className="mt-1.5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
                 <input
                   value={draftVaultDir}
@@ -642,7 +776,12 @@ interface ImportButtonsProps {
   onRun: () => void
 }
 
-function ImportButtons({ disabled, busy, onPreview, onRun }: ImportButtonsProps): React.JSX.Element {
+function ImportButtons({
+  disabled,
+  busy,
+  onPreview,
+  onRun
+}: ImportButtonsProps): React.JSX.Element {
   return (
     <div className="flex gap-2 sm:contents">
       <button

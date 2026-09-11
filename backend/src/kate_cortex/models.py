@@ -141,9 +141,26 @@ class ChatResend(BaseModel):
     keep_images: bool = True
 
 
+class McpServerCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=40)
+    url: str = Field(min_length=1)
+
+
+class McpServerUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=40)
+    enabled: bool | None = None
+
+
+class McpServerOut(BaseModel):
+    id: str
+    name: str
+    url: str
+    enabled: bool
+
+
 class SettingsUpdate(BaseModel):
     """extra=forbid：vault_path 等无效字段直接 422，而不是静默忽略造成
-    "看似配置成功"的误导（诚实原则）"""
+    "看似配置成功"的误导（诚实原则）。MCP 服务经 /mcp/servers 管理，不在这改"""
 
     model_config = {"extra": "forbid"}
 
@@ -155,7 +172,6 @@ class SettingsUpdate(BaseModel):
     embedding_provider: EmbeddingProviderName | None = None
     embedding_model: str | None = None
     embedding_api_key: str | None = None
-    mcp_url: str | None = None
     export_dir: str | None = None
 
 
@@ -169,7 +185,7 @@ class SettingsOut(BaseModel):
     embedding_provider: str
     embedding_model: str
     embedding_api_key: str | None
-    mcp_url: str | None
+    mcp_servers: list[McpServerOut]
     export_dir: str | None
 
 

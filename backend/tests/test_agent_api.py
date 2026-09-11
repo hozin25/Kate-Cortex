@@ -230,6 +230,8 @@ class TestAgentLoopEdges:
             "export_markdown",
             "save_memory",
             "recall_memory",
+            "install_mcp",
+            "remove_mcp",
         ]
 
     def test_memory_disabled_hides_memory_tools(self, client):
@@ -241,7 +243,13 @@ class TestAgentLoopEdges:
         chat(client, session_id)
 
         tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
-        assert tool_names == ["save_knowledge", "suggest_save", "export_markdown"]
+        assert tool_names == [
+            "save_knowledge",
+            "suggest_save",
+            "export_markdown",
+            "install_mcp",
+            "remove_mcp",
+        ]
 
 
 class TestMemoryFlow:

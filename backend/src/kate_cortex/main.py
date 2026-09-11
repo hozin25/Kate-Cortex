@@ -74,7 +74,7 @@ def create_app(config: Config | None = None) -> FastAPI:
     app.state.storage = storage
     app.state.chat_service = ChatService(database.conn)
     app.state.settings_service = settings_service
-    app.state.provider_factory = ProviderFactory(app.state.settings_service)
+    app.state.provider_factory = ProviderFactory(settings_service)
     app.state.vector_index = vector_index
     app.state.projection = projection
 
@@ -134,6 +134,8 @@ def _run_startup_migrations(database, storage, settings_service) -> None:
     reencrypted = settings_service.encrypt_existing_secrets()
     if reencrypted:
         logger.info("已将 %d 项历史明文凭据重写为 DPAPI 密文", reencrypted)
+    if settings_service.migrate_mcp_url():
+        logger.info("已将旧版单端点 mcp_url 迁移为 MCP 服务列表")
     purged = storage.cleanup_trash()
     if purged:
         logger.info("回收站清理：%d 个超期文件已删除", purged)

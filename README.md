@@ -18,8 +18,9 @@
 - **混合检索**：FTS5（jieba 中文分词）+ sqlite-vec 向量语义检索（GLM embedding-3
   或硅基流动 bge-m3 免费档），换个说法也能搜到；语义空间三维视图
 - **多模态**：对话可粘贴/拖入图片提问（glm-5.3 等视觉模型）
-- **MCP 双形态**：客户端接入高德等外部工具；服务端（stdio）向 Claude Code /
-  Cursor 暴露知识检索、沉淀与记忆工具
+- **MCP 双形态**：客户端可接入多个外部工具服务——对话里把端点发给 Kate 即可自动
+  验证接入（`install_mcp`），设置页可视化管理并实时展示每个服务可用/不可用；
+  服务端（stdio）向 Claude Code / Cursor 暴露知识检索、沉淀与记忆工具
 - **多模型**：DeepSeek / GLM / GLM 编程套餐 / 硅基流动 / 魔搭，全部本地 key 直连
 - **安全**：API key DPAPI 加密落盘，本地 API token 鉴权，数据全本地
 

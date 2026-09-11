@@ -15,3 +15,8 @@ export function formatTime(iso: string): string {
     minute: '2-digit'
   })
 }
+
+/** 掩盖 URL 查询参数里的密钥值（key/token/…），保留其余部分便于辨认端点 */
+export function maskSecretUrl(url: string): string {
+  return url.replace(/([?&][\w-]*(?:key|token|secret|passwd|password)[\w-]*=)[^&]+/gi, '$1••••')
+}

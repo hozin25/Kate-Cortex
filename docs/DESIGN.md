@@ -305,9 +305,15 @@ DELETE /api/chat/sessions/:id/messages/:mid                 删除单条消息�
 
 # 设置
 GET    /api/settings
-PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径 / mcp_url / export_dir
+PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径 / export_dir
 POST   /api/providers/test              {provider} 连通性测试
-POST   /api/mcp/test                    MCP 端点连通性测试（list_tools）
+
+# MCP 服务（多服务接入，2026-09-11 增补；状态缓存供设置页展示可用/不可用）
+GET    /api/mcp/servers                 列表（含最近一次实测状态 {ok, message, tool_count, checked_at}）
+POST   /api/mcp/servers                 {name, url} 添加：先真实 list_tools 验证，失败 400 不落配置
+PATCH  /api/mcp/servers/:id             {enabled} 启用/停用
+DELETE /api/mcp/servers/:id             移除
+POST   /api/mcp/servers/:id/test        连通性实测（list_tools）并刷新状态缓存
 
 # 系统
 POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）
@@ -339,7 +345,8 @@ Anthropic image block，由 anthropic_compat 归一化），文本模型发图 4
 | `suggest` | `{title, collections, preview}` | AI 建议卡片（**未入库**，等用户确认；合集建议可改可拒） |
 | `memory_saved` | `{entry_id, slug, title, keywords, replaced}` | save_memory 已自动记住/更新 → 前端渲染记忆卡片（可撤销） |
 | `memory_refs` | `{query, memories: [{entry_id, title, content, keywords, created_at}]}` | recall_memory 命中相关记忆 → 前端渲染「想起」chips；无命中不推 |
-| `mcp_notice` | `{message}` | MCP 端点配置了但连接失败 → 前端 toast 警告，本次对话降级为无外部工具继续 |
+| `mcp_notice` | `{message}` | 已接入的 MCP 服务连接失败 → 前端 toast 警告，本次对话降级为无该服务的工具继续 |
+| `mcp_changed` | `{ok, message, id?, tools?}` | 会话内 install_mcp / remove_mcp 执行结果 → 前端 toast 成功/警告；配置已持久化，设置页状态同步 |
 | `file_saved` | `{title, file_path}` | export_markdown 已落盘独立 .md 文件 → 前端 toast 显示保存路径 |
 | `done` | `{message_id}` | 消息落库完成 |
 | `error` | `{message}` | 出错 |
@@ -437,25 +444,41 @@ providers/
 [RAG 知识（可选注入）：以下来自用户知识库，回答可参考并注明来源条目标题]
 ```
 
-### 6.3 外部工具接入（MCP client，2026-09-02 增补）
+### 6.3 外部工具接入（MCP client，2026-09-02 增补；多服务改造 2026-09-11）
 
 通过 **MCP Streamable HTTP** 让 agent 调用外部工具服务（典型：高德地图 MCP Server，
 获得 POI 搜索 / 景点详情 / 路线规划 / 天气查询，支撑旅游行程规划等实时数据场景）。
 
-- **配置**：settings 表新增 `mcp_url`（完整 Streamable HTTP 端点，key 直接拼在
-  URL 上，如 `https://mcp.amap.com/mcp?key=…`；留空停用）。设置页可填、可一键
-  测试（`POST /api/mcp/test` 走真实 `list_tools`）
+- **配置**：settings 表 `mcp_servers` 列表（`{id, name, url, enabled}`，最多 10 个；
+  旧版单端点 `mcp_url` 启动时自动迁移，见 `SettingsService.migrate_mcp_url`）。
+  url 为完整 Streamable HTTP 端点（key 直接拼在 URL 上，如
+  `https://mcp.amap.com/mcp?key=…`）。管理入口有三处，全部走同一套校验与状态缓存：
+  设置页手动 CRUD（`/api/mcp/servers`）、对话内 `install_mcp` / `remove_mcp` 工具、
+  连通性实测（`POST /api/mcp/servers/:id/test`）。添加必须先真实 `list_tools`
+  验证通过才落盘，保证设置里的服务都是验证过的
+- **会话内安装**：用户把端点发给 Kate（「帮我接入高德地图 MCP，url 是 …」），
+  模型调 `install_mcp(name, url)` → 验证 + 落盘 + 推 `mcp_changed` SSE（前端 toast）；
+  失败时把原因回传模型如实转告，不落任何配置。安装成功的服务工具表**当轮即刷新**
+  （agent loop 每轮从 `McpContext.tool_defs()` 现取），模型下一轮就能调用
 - **客户端**（`mcp_client.py`）：官方 mcp SDK（v2）+ Streamable HTTP 传输，对同步
   agent loop 暴露两个同步接口（内部 `asyncio.run`，每次调用独立连接）：
   `list_mcp_tools(url)`（`list_tools` → 转 OpenAI function-calling 工具表）、
-  `call_mcp_tool(url, name, args)`（`call_tool` → 结果文本原样回传模型）
-- **agent loop 融合**：MCP 工具 schema 并入 tools 表尾部；本地名未命中的 tool_call
-  转发 MCP。工具结果是纯文本 → 不产生独立 SSE 事件，直接作为 tool 消息回传；
-  `tool_calls` 照常落库。`MAX_TOOL_ROUNDS` 3 → 8（行程规划需反复搜索 + 路线规划）
-- **降级**：每轮对话开始时拉一次工具清单，连接失败推 `mcp_notice`（前端 toast）
-  后正常继续——只是没有实时数据，不阻断对话
-- **提示词**：`mcp_enabled` 时注入「外部实时工具」规则（实时信息必须查工具、
-  行程按天分节 Markdown 输出、注明数据来源、失败如实告知）
+  `call_mcp_tool(url, name, args)`（`call_tool` → 结果文本原样回传模型）；
+  另含命名空间转换 `to_namespaced_tools` / 反解 `parse_mcp_tool_name`
+- **命名空间**：多服务接入下工具名统一加前缀 `mcp__<服务id>__<工具名>`
+  （id 为 [a-z0-9_-] 短标识，不含 `__`，可无损反解），避免不同服务的工具重名，
+  模型也能从工具名识别所属服务；dispatch 在 `McpContext.dispatch` 完成反解与转发
+- **agent loop 融合**：各启用服务的命名空间工具并入 tools 表尾部；`mcp__` 前缀的
+  tool_call 反解后转发对应服务。工具结果是纯文本 → 不产生独立 SSE 事件，直接作为
+  tool 消息回传；`tool_calls` 照常落库。`MAX_TOOL_ROUNDS` 3 → 8（行程规划需反复
+  搜索 + 路线规划）
+- **降级与状态**：每轮对话开始时逐服务拉一次工具清单（`McpContext.load`），失败的
+  服务合并推一条 `mcp_notice` 后正常继续——只是没有该服务的实时数据，不阻断对话；
+  成败都写入状态缓存（`mcp_registry._STATUS`），设置页展示「可用 / 不可用 + 工具数
+  + 检测时间」，进设置页时会重新实测一遍
+- **提示词**：「接入 / 移除外部工具服务」规则常驻（端点只能来自用户或官方文档、
+  严禁编造）；`mcp_enabled`（有服务工具可用）时额外注入「外部实时工具」规则
+  （实时信息必须查工具、行程按天分节 Markdown 输出、注明数据来源、失败如实告知）
 - 现实约束：携程 / 美团 / 马蜂窝无公开 API；地图类（高德 / 百度 / 腾讯）有官方
   MCP，个人开发者免费额度即可用
 

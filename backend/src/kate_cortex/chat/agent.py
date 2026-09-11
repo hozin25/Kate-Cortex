@@ -3,12 +3,14 @@
 import json
 from typing import Iterator
 
-from ..mcp_client import call_mcp_tool
+from ..mcp_registry import McpContext
 from ..providers.base import TextDelta, ToolCallAccumulator, ToolCallDelta
 from ..skills.export import TOOLS as EXPORT_TOOLS
 from ..skills.export import export_markdown
 from ..skills.knowledge import TOOLS as KNOWLEDGE_TOOLS
 from ..skills.knowledge import save_knowledge, suggest_save
+from ..skills.mcp_manage import TOOLS as MCP_MANAGE_TOOLS
+from ..skills.mcp_manage import install_mcp, remove_mcp
 from ..skills.memory import TOOLS as MEMORY_TOOLS
 from ..skills.memory import recall_memory, save_memory
 from .prompts import build_system_prompt
@@ -35,24 +37,26 @@ def run_agent_chat(
     memory_snippets: list | None = None,
     conversation_summary: str | None = None,
     memory_enabled: bool = False,
-    mcp_tools: list[dict] | None = None,
-    mcp_url: str | None = None,
+    mcp: McpContext | None = None,
     export_dir: str | None = None,
 ) -> Iterator[str]:
+    mcp = mcp or McpContext(_NullSettings())
     system_prompt = build_system_prompt(
         rag_snippets=rag_snippets,
         profile_snippets=profile_snippets,
         collections=collection_names,
         memory_snippets=memory_snippets,
         conversation_summary=conversation_summary,
-        mcp_enabled=bool(mcp_tools),
+        mcp_enabled=mcp.has_tools,
     )
     messages = [{"role": "system", "content": system_prompt}, *history]
-    tools = [
+    # 基础工具固定；MCP 工具表每轮从 mcp.tool_defs() 现取——
+    # install_mcp / remove_mcp 成功后，下一轮生成即用新工具表
+    base_tools = [
         *KNOWLEDGE_TOOLS,
         *EXPORT_TOOLS,
         *(MEMORY_TOOLS if memory_enabled else []),
-        *(mcp_tools or []),
+        *MCP_MANAGE_TOOLS,
     ]
     knowledge_refs = [s.entry_id for s in rag_snippets]
     executed_tools: list[dict] = []
@@ -62,7 +66,9 @@ def run_agent_chat(
         parts: list[str] = []
         accumulator = ToolCallAccumulator()
         try:
-            for event in provider.chat_stream(messages, tools=tools):
+            for event in provider.chat_stream(
+                messages, tools=[*base_tools, *mcp.tool_defs()]
+            ):
                 if isinstance(event, TextDelta):
                     parts.append(event.text)
                     yield sse("delta", {"text": event.text})
@@ -81,9 +87,7 @@ def run_agent_chat(
             {"role": "assistant", "content": "".join(parts), "tool_calls": tool_calls}
         )
         for call in tool_calls:
-            result = _execute_tool(
-                call, storage, session_id, executed_tools, mcp_url, export_dir
-            )
+            result = _execute_tool(call, storage, session_id, executed_tools, mcp, export_dir)
             if isinstance(result, dict):
                 event = _sse_event(call["function"]["name"], result)
                 if event:
@@ -103,12 +107,22 @@ def run_agent_chat(
     yield sse("done", {"message_id": message.id})
 
 
+class _NullSettings:
+    """无后端上下文（测试直接调 run_agent_chat）时 install/remove 的兜底"""
+
+    def get_all(self) -> dict:
+        return {"mcp_servers": []}
+
+    def update(self, patch: dict) -> dict:
+        return self.get_all()
+
+
 def _execute_tool(
     call: dict,
     storage,
     session_id: str,
     executed_tools: list[dict],
-    mcp_url: str | None = None,
+    mcp: McpContext | None = None,
     export_dir: str | None = None,
 ) -> dict | str:
     name = call["function"]["name"]
@@ -129,8 +143,12 @@ def _execute_tool(
             return save_memory(storage, args, conversation_id=session_id)
         if name == "recall_memory":
             return recall_memory(storage, args)
-        if mcp_url:
-            return call_mcp_tool(mcp_url, name, args)
+        if name == "install_mcp":
+            return install_mcp(mcp, args)
+        if name == "remove_mcp":
+            return remove_mcp(mcp, args)
+        if name.startswith("mcp__"):
+            return mcp.dispatch(name, args)
         return f"未知工具: {name}"
     except Exception as exc:
         return f"工具执行失败: {exc}"
@@ -139,6 +157,8 @@ def _execute_tool(
 def _sse_event(name: str, result: dict) -> str | None:
     """工具结果对应的 SSE 事件；返回 None 表示无需推给前端
     （如 recall 无命中，避免空噪音）"""
+    if name in ("install_mcp", "remove_mcp"):
+        return "mcp_changed"
     if name == "save_memory":
         return "memory_saved"
     if name == "recall_memory":
@@ -152,6 +172,12 @@ def _sse_event(name: str, result: dict) -> str | None:
 
 def _tool_summary(call: dict, result: dict) -> str:
     name = call["function"]["name"]
+    if name in ("install_mcp", "remove_mcp"):
+        if not result.get("ok"):
+            return f"接入失败: {result.get('message', '未知原因')}"
+        tools = result.get("tools") or []
+        detail = "，可用工具: " + "、".join(tools) if tools else ""
+        return f"{result['message']}{detail}"
     if name == "save_memory":
         action = "已更新记忆" if result.get("replaced") else "已记住"
         return f"{action}《{result['title']}》(id={result['entry_id']})"

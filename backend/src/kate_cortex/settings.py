@@ -20,7 +20,7 @@ DEFAULTS = {
     "embedding_provider": "glm",  # glm | siliconflow
     "embedding_model": "embedding-3",
     "embedding_api_key": None,  # siliconflow 必填；glm 为空时回退 provider_keys["glm"]
-    "mcp_url": None,  # MCP Streamable HTTP 端点（含 key），如高德地图；留空停用
+    "mcp_servers": [],  # MCP 服务列表 [{id, name, url, enabled}]，经 /mcp/servers 或 install_mcp 管理
     "export_dir": None,  # export_markdown 导出文件夹；空则用 文档\Kate-Cortex 导出
 }
 
@@ -60,6 +60,32 @@ class SettingsService:
                     (key, json.dumps(self._encrypt_field(key, value), ensure_ascii=False)),
                 )
         return self.get_all()
+
+    def migrate_mcp_url(self) -> bool:
+        """旧版单端点 mcp_url → mcp_servers 列表（幂等；迁移后删除旧键）。
+        已配置了非空 mcp_servers 时不覆盖，避免吞掉新配置"""
+        rows = {
+            row["key"]: row["value"]
+            for row in self.conn.execute(
+                "SELECT key, value FROM settings WHERE key IN ('mcp_url', 'mcp_servers')"
+            ).fetchall()
+        }
+        if "mcp_url" not in rows:
+            return False
+        if "mcp_servers" in rows and json.loads(rows["mcp_servers"]):
+            return False
+        url = (json.loads(rows["mcp_url"]) or "").strip()
+        if url:
+            self.update(
+                {
+                    "mcp_servers": [
+                        {"id": "mcp", "name": "MCP 服务", "url": url, "enabled": True}
+                    ]
+                }
+            )
+        with self.conn:
+            self.conn.execute("DELETE FROM settings WHERE key = 'mcp_url'")
+        return True
 
     def encrypt_existing_secrets(self) -> int:
         """启动迁移：历史明文 key 就地重写为密文（幂等，返回改写条数）"""

@@ -44,9 +44,18 @@ TOOL_RULES = """## 工具使用规则
   独立文档文件（如旅游行程、报告、清单）→ export_markdown。
 - 行程规划完成并经用户确认后，可主动提议「要不要导出成 md 文件」，由用户决定。"""
 
+MCP_MANAGE_RULES = """### 接入 / 移除外部工具服务（install_mcp / remove_mcp）
+- 用户想接入外部服务（地图、天气、搜索、GitHub 等 MCP 服务，或说「装个工具」）时，
+  调用 install_mcp：url 必须是用户提供的或官方文档给出的完整端点（含 key），严禁编造；
+  不确定时向用户索要，可以提示「在服务商开放平台创建 MCP 端点后把 URL 发我」。
+- 安装成功后，该服务的工具以 mcp__<服务id>__<工具名> 加入工具列表，本轮对话即可
+  直接调用；配置已持久化，设置页可见其可用状态，无需让用户再去设置页手动添加。
+- 已接入的服务以工具列表中 mcp__ 前缀为准；用户要求移除/换掉某服务时调用 remove_mcp。
+- 用户问「你能用哪些外部工具」「接入了什么」时，按当前工具列表中 mcp__ 前缀如实回答。"""
+
 MCP_RULES = """### 外部实时工具（MCP：地图 / 景点 / 路线 / 天气）
-- 工具列表中的 MCP 外部工具（POI 搜索、景点详情、路线规划、天气查询等）返回真实
-  数据。涉及景点门票、开放时间、评分、距离、天气等实时信息时，必须先调用工具查询，
+- 工具列表中 mcp__ 前缀的外部工具（POI 搜索、景点详情、路线规划、天气查询等）返回
+  真实数据。涉及景点门票、开放时间、评分、距离、天气等实时信息时，必须先调用工具查询，
   严禁凭印象编造价格与营业时间。
 - 做旅游行程规划时：先逐个搜索景点并查看详情（名称、评分、地址、建议游玩时长），
   再用路线规划 / 距离测算安排每日动线（同一天的活动尽量集中在同一片区），必要时
@@ -104,7 +113,10 @@ def build_system_prompt(
     conversation_summary: str | None = None,
     mcp_enabled: bool = False,
 ) -> str:
-    parts = [PERSONA, TOOL_RULES + "\n\n" + MCP_RULES if mcp_enabled else TOOL_RULES]
+    parts = [
+        PERSONA,
+        TOOL_RULES + "\n\n" + MCP_MANAGE_RULES + ("\n\n" + MCP_RULES if mcp_enabled else ""),
+    ]
     if conversation_summary:
         parts.append(CONVERSATION_SUMMARY_HEADER + "\n\n" + conversation_summary)
     if profile_snippets:

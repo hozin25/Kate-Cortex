@@ -60,6 +60,31 @@ def _to_openai_tool(tool: types.Tool) -> dict:
     }
 
 
+def to_namespaced_tools(openai_tools: list[dict], server_id: str) -> list[dict]:
+    """工具名加 mcp__<服务id>__ 前缀：多服务接入时避免不同 server 的工具重名，
+    同时让模型能从工具名识别所属服务（id 不含 __，可无损反解）"""
+    namespaced = []
+    for tool in openai_tools:
+        fn = dict(tool["function"])
+        fn["name"] = mcp_tool_name(server_id, fn["name"])
+        namespaced.append({"type": "function", "function": fn})
+    return namespaced
+
+
+def mcp_tool_name(server_id: str, tool_name: str) -> str:
+    return f"mcp__{server_id}__{tool_name}"
+
+
+def parse_mcp_tool_name(name: str) -> tuple[str, str] | None:
+    """mcp__<id>__<tool> → (id, tool)；非 MCP 前缀返回 None"""
+    if not name.startswith("mcp__"):
+        return None
+    server_id, sep, tool_name = name[len("mcp__") :].partition("__")
+    if not sep or not server_id or not tool_name:
+        return None
+    return server_id, tool_name
+
+
 def _result_text(result: types.CallToolResult) -> str:
     texts = [
         block.text for block in result.content if isinstance(block, types.TextContent)

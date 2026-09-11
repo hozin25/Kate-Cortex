@@ -87,6 +87,12 @@ export const useChatStore = create<ChatState>((set, get) => {
           set({ memoryRefs: (data.memories as MemoryRefItem[]) ?? [] })
         } else if (event === 'mcp_notice') {
           toast.warning(String(data.message ?? '外部工具服务异常'))
+        } else if (event === 'mcp_changed') {
+          // 会话内 install_mcp / remove_mcp 的结果提示
+          const ok = data.ok !== false
+          const message = String(data.message ?? 'MCP 服务已更新')
+          if (ok) toast.success(message)
+          else toast.warning(message)
         } else if (event === 'file_saved') {
           toast.success(`已导出 Markdown 文件：${String(data.file_path ?? '')}`)
         } else if (event === 'done') {

@@ -117,6 +117,26 @@ export interface MemoryRefPayload {
   memories: MemoryRefItem[]
 }
 
+export interface McpServer {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
+/** 最近一次实测（list_tools）的连通状态，设置页展示「可用 / 不可用」 */
+export interface McpServerStatus {
+  ok: boolean
+  message: string
+  tool_count: number
+  tools: string[]
+  checked_at: string
+}
+
+export interface McpServerWithStatus extends McpServer {
+  status: McpServerStatus | null
+}
+
 export interface AppSettings {
   provider_keys: Record<string, string>
   default_provider: ProviderName
@@ -127,7 +147,7 @@ export interface AppSettings {
   embedding_provider: EmbeddingProviderName
   embedding_model: string
   embedding_api_key: string | null
-  mcp_url: string | null
+  mcp_servers: McpServer[]
   export_dir: string | null
 }
 
