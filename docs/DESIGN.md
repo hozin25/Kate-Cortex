@@ -315,6 +315,14 @@ PATCH  /api/mcp/servers/:id             {enabled} 启用/停用
 DELETE /api/mcp/servers/:id             移除
 POST   /api/mcp/servers/:id/test        连通性实测（list_tools）并刷新状态缓存
 
+# 自定义 Agent（2026-09-13 增补，详见 AGENTS_PLAN.md；存储 settings["agents"]）
+GET    /api/agents                      列表（预置「私人生活医生」在 DEFAULTS 种子）
+POST   /api/agents                      {name, description, prompt, provider?, model?}
+                                        名称=引用 token（1-32 位中英数连字符下划线）；
+                                        重名 409；provider/model 成对可选（不填跟随会话模型）
+PATCH  /api/agents/:id                  部分更新（含 enabled 启停）
+DELETE /api/agents/:id                  移除（历史消息的 /名称 前缀回落默认 Kate）
+
 # 系统
 POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）
 GET    /api/health                      {app: "kate-cortex", version}
@@ -438,11 +446,22 @@ providers/
 ```
 你是 Kate，用户的个人知识助手。
 [人设与回答风格]
+[当前角色：{name}（agent 角色段，2026-09-13 增补）——/名称 引用时注入在
+ 人设之后、工具规则之前：人格可被覆盖，工具能力不裁剪]
 [工具使用规则：用户说"记一下"等 → 立即 save_knowledge；
  发现高价值结论/方法/决策 → suggest_save 建议，不擅自保存]
 [用户档案（常驻注入）：「个人信息」合集的条目；回答与用户本人相关的问题直接采用]
 [RAG 知识（可选注入）：以下来自用户知识库，回答可参考并注明来源条目标题]
 ```
+
+**自定义 agent 引用**（2026-09-13 增补，详见 AGENTS_PLAN.md）：聊天输入 `/` 弹出
+agent 菜单（对标 ZCode slash 菜单：`/` 锚定输入开头、子串过滤、↑↓ + Enter/Tab 选中、
+Esc 关闭；IME 组合中 Enter 不选中不发送）。消息以 `/名称 正文` 原样落库——历史可见、
+自描述；`chat/regenerate/resend` 三条路径共用 `_resolve_chat_agent` 从最后一条用户
+消息解析前缀（chat/routes），命中则注入角色段；agent 指定 provider/model 时该条
+请求级覆盖（不落会话），key 未配置 400。预置「私人生活医生」
+（`agent_presets.py`，阿福式问诊：结构化多轮反问 → 复述确认 → 分级意见 + 红旗
+症状强制就医，过敏史/慢病复用自动记忆沉淀与召回）。
 
 ### 6.3 外部工具接入（MCP client，2026-09-02 增补；多服务改造 2026-09-11）
 
@@ -608,11 +627,14 @@ frontend/src/
     SettingsPage.tsx      # Provider/key/模型/RAG 默认/vault 路径/连通测试
   components/
     chat/    SessionSidebar · MessageBubble(markdown+shiki 流式渲染) · ChatInput
+             (含 / 引用 agent 菜单：锚定输入开头、↑↓+Enter/Tab、IME 保护，2026-09-13)
              SavedCard · SuggestCard(确认/忽略) · CitationChips · RagToggle
+    settings/ AgentsPanel(自定义 agent 增删改/启停/指定模型，2026-09-13)
     library/ VectorGraph(语义空间三维点云，§7.3) · pointColors(合集配色纯函数)
     editor/  FrontmatterForm · CodeMirrorEditor
     common/  MarkdownView · GlassPanel(毛玻璃容器) · GradientText
-  stores/   chatStore · settingsStore · libraryStore   (zustand)
+  stores/   chatStore · settingsStore · libraryStore · agentsStore(/菜单与设置面板共用)
+             (zustand)
   api/      client.ts · sse.ts(fetch+ReadableStream 解析)
 ```
 
