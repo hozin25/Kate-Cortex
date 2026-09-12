@@ -158,6 +158,28 @@ class McpServerOut(BaseModel):
     enabled: bool
 
 
+class AgentCreate(BaseModel):
+    """格式细节（token 字符集 / 长度上限 / provider 合法性）由 agents 模块校验，
+    422/409 语义与 Pydantic 区分开"""
+
+    name: str = Field(min_length=1)
+    description: str = ""
+    prompt: str = Field(min_length=1)
+    provider: str | None = None  # 与 model 成对；留空跟随会话模型
+    model: str | None = None
+
+
+class AgentUpdate(BaseModel):
+    """全部可选的 PATCH 载荷；至少给一个字段由路由校验"""
+
+    name: str | None = Field(default=None, min_length=1)
+    description: str | None = None
+    prompt: str | None = Field(default=None, min_length=1)
+    provider: str | None = None
+    model: str | None = None
+    enabled: bool | None = None
+
+
 class SettingsUpdate(BaseModel):
     """extra=forbid：vault_path 等无效字段直接 422，而不是静默忽略造成
     "看似配置成功"的误导（诚实原则）。MCP 服务经 /mcp/servers 管理，不在这改"""

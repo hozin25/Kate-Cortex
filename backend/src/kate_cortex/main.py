@@ -118,6 +118,7 @@ def _wire_multiuser(app: FastAPI) -> None:
 
 def _include_routers(app: FastAPI) -> None:
     from .routes import (
+        agents,
         attachments,
         auth,
         chat,
@@ -139,6 +140,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(sync.router, prefix="/api")
     app.include_router(chat.router, prefix="/api")
     app.include_router(settings.router, prefix="/api")
+    app.include_router(agents.router, prefix="/api")
     app.include_router(embeddings.router, prefix="/api")
     app.include_router(mcp.router, prefix="/api")
     app.include_router(importer.router, prefix="/api")
