@@ -9,6 +9,7 @@ config（环境变量/默认值）决定，GET /api/settings 返回当前生效�
 import json
 import sqlite3
 
+from .agent_presets import BUILTIN_AGENTS
 from .security import decrypt_secret, encrypt_secret
 
 DEFAULTS = {
@@ -21,7 +22,7 @@ DEFAULTS = {
     "embedding_model": "embedding-3",
     "embedding_api_key": None,  # siliconflow 必填；glm 为空时回退 provider_keys["glm"]
     "mcp_servers": [],  # MCP 服务列表 [{id, name, url, enabled}]，经 /mcp/servers 或 install_mcp 管理
-    "agents": [],  # 自定义 agent 列表（AGENTS_PLAN.md），经 /agents 管理；引用 `/名称`
+    "agents": BUILTIN_AGENTS,  # 自定义 agent；预置「私人生活医生」（agent_presets.py），增删改后以库内为准
     "export_dir": None,  # export_markdown 导出文件夹；空则用 文档\Kate-Cortex 导出
 }
 

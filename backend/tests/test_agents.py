@@ -43,7 +43,7 @@ class TestAgentCrud:
         assert agent["provider"] is None and agent["model"] is None
 
         agents = client.get("/api/agents").json()["agents"]
-        assert [a["name"] for a in agents] == ["翻译官"]
+        assert [a["name"] for a in agents] == ["私人生活医生", "翻译官"]  # 预设在前（created_at 升序）
 
     def test_create_with_model_pair(self, client):
         agent = create(client, provider="glm-coding", model="glm-5.3").json()
@@ -112,14 +112,56 @@ class TestAgentCrud:
     def test_delete_then_404(self, client):
         agent = create(client).json()
         assert client.delete(f"/api/agents/{agent['id']}").status_code == 204
-        assert client.get("/api/agents").json()["agents"] == []
+        assert [a["name"] for a in client.get("/api/agents").json()["agents"]] == [
+            "私人生活医生"
+        ]
         assert client.delete(f"/api/agents/{agent['id']}").status_code == 404
 
     def test_disabled_agent_still_stored_but_not_resolved(self, client):
         create(client)
-        agent = client.get("/api/agents").json()["agents"][0]
+        agent = next(
+            a
+            for a in client.get("/api/agents").json()["agents"]
+            if a["name"] == "翻译官"
+        )
         client.patch(f"/api/agents/{agent['id']}", json={"enabled": False})
         assert resolve_agent("/翻译官 你好", client.get("/api/agents").json()["agents"]) is None
+
+
+class TestBuiltinDoctorPreset:
+    """内置预设「私人生活医生」种子语义（AGENTS_PLAN.md §8.2）"""
+
+    def test_fresh_db_seeds_doctor_agent(self, client):
+        agents = client.get("/api/agents").json()["agents"]
+        assert [a["name"] for a in agents] == ["私人生活医生"]
+        doctor = agents[0]
+        assert doctor["id"] == "kc_agent_doctor"
+        assert doctor["enabled"] is True
+        assert doctor["provider"] is None and doctor["model"] is None
+        # 阿福式问诊提示词的关键要素齐全
+        assert "问诊流程" in doctor["prompt"]
+        assert "红旗症状" in doctor["prompt"]
+        assert "不能替代执业医师" in doctor["prompt"]
+
+    def test_doctor_agent_resolvable_via_prefix(self, client):
+        agents = client.get("/api/agents").json()["agents"]
+        assert resolve_agent("/私人生活医生 我最近头疼", agents)["id"] == "kc_agent_doctor"
+
+    def test_deleted_doctor_stays_deleted(self, client):
+        assert client.delete("/api/agents/kc_agent_doctor").status_code == 204
+        assert client.get("/api/agents").json()["agents"] == []
+
+        # 任何设置写回都不会让被删除的预设复活
+        client.put("/api/settings", json={"rag_default": False})
+        assert client.get("/api/agents").json()["agents"] == []
+
+    def test_doctor_not_triggered_when_renamed(self, client):
+        client.patch(
+            "/api/agents/kc_agent_doctor", json={"name": "医生"}
+        )
+        agents = client.get("/api/agents").json()["agents"]
+        assert resolve_agent("/私人生活医生 你好", agents) is None
+        assert resolve_agent("/医生 你好", agents)["id"] == "kc_agent_doctor"
 
 
 class TestResolveAgent:
