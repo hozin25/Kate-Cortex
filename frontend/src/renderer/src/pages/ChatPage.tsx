@@ -12,6 +12,7 @@ import { MemoryRefChips } from '@renderer/components/chat/MemoryRefChips'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { GradientText } from '@renderer/components/common/Glass'
 import { useChatStore, pickStartProvider } from '@renderer/stores/chat'
+import { useAgentsStore } from '@renderer/stores/agents'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useUiStore } from '@renderer/stores/ui'
 import { toast } from '@renderer/stores/toast'
@@ -34,6 +35,8 @@ export function ChatPage(): React.JSX.Element {
   const ragEnabled = store.ragEnabled
   const [search, setSearch] = useState('')
   const settings = useSettingsStore((s) => s.settings)
+  const agents = useAgentsStore((s) => s.agents)
+  const loadAgents = useAgentsStore((s) => s.load)
   const currentSession = store.sessions.find((s) => s.id === currentId) ?? null
   const [catalog, setCatalog] = useState<ProviderCatalog[] | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -45,6 +48,11 @@ export function ChatPage(): React.JSX.Element {
       .then((r) => setCatalog(r.providers))
       .catch(() => setCatalog([]))
   }, [])
+
+  useEffect(() => {
+    // / 引用菜单数据；加载失败静默——/ 仍可正常输入
+    loadAgents().catch(() => {})
+  }, [loadAgents])
 
   // 目录里当前模型的视觉能力；目录外的自定义模型未知 → null（不拦，后端 400 兜底）
   const visionSupported = useMemo(() => {
@@ -249,6 +257,7 @@ export function ChatPage(): React.JSX.Element {
         <ChatInput
           streaming={streaming}
           visionSupported={visionSupported}
+          agents={agents.filter((a) => a.enabled)}
           onSend={(c, imgs) => void store.sendMessage(c, imgs)}
           onStop={store.stopStreaming}
         />
