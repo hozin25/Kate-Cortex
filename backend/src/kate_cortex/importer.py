@@ -19,9 +19,13 @@ import yaml
 
 from .attachments import ATTACHMENT_DIR
 from .frontmatter import EntryMeta, dump_markdown, parse_markdown
-from .security import decrypt_secret
+from .security import PREFIX_DPAPI, PREFIX_FERNET, decrypt_secret
 from .slugify import slugify
 from .storage import Storage
+
+# 解密后仍是密文前缀 = 本机无法解密（如 Linux 服务器遇到 Windows DPAPI 密文），
+# 按「静默跳过」约定不能把它当明文 key 存入
+_CIPHERTEXT_PREFIXES = (PREFIX_DPAPI, PREFIX_FERNET)
 
 # 源扫描统一跳过的目录/文件
 SKIP_DIRS = {".trash", ".obsidian", ".git", "node_modules"}
@@ -164,13 +168,15 @@ def _merge_provider_keys(settings_service, source: Path, dry_run: bool) -> list[
     try:
         for name, value in (json.loads(row[0]) if row else {}).items():
             if value:
-                decrypted[name] = decrypt_secret(value)
+                key = decrypt_secret(value)
+                if key and not key.startswith(_CIPHERTEXT_PREFIXES):
+                    decrypted[name] = key
     except Exception:
         pass
     try:
         if embed_row and embed_row[0]:
             key = decrypt_secret(json.loads(embed_row[0]))
-            if key:
+            if key and not key.startswith(_CIPHERTEXT_PREFIXES):
                 decrypted.setdefault("embedding", key)
     except Exception:
         pass

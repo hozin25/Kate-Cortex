@@ -101,6 +101,29 @@ class TestVaultImport:
         assert report.keys_merged == ["deepseek"]
         assert fake.current["provider_keys"]["glm"] == "existing"  # 不覆盖
 
+    def test_undecryptable_ciphertext_skipped(self, storage, tmp_path, monkeypatch):
+        """跨平台场景（如 Linux 服务器导入 Windows 备份）：DPAPI 密文解不开时
+        必须静默跳过，不能把密文原样当明文 key 存入目标账号"""
+        monkeypatch.setattr(
+            "kate_cortex.importer.decrypt_secret", lambda value: value
+        )  # 模拟非 Windows 平台对 dpapi: 密文无能为力
+        src = _make_source_vault(tmp_path, with_settings={"glm": "dpapi:FAKE-CIPHER"})
+
+        class FakeSettings:
+            def __init__(self):
+                self.current = {"provider_keys": {}}
+
+            def get_all(self):
+                return self.current
+
+            def update(self, patch):
+                self.current["provider_keys"].update(patch["provider_keys"])
+
+        fake = FakeSettings()
+        report = import_vault(storage, fake, str(src))
+        assert report.keys_merged == []
+        assert fake.current["provider_keys"] == {}
+
     def test_rejects_same_dir_and_missing(self, storage, tmp_path):
         import pytest
 
