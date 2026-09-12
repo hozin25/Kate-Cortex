@@ -89,6 +89,13 @@ COLLECTIONS_HEADER = (
     "没有合适的合集则不传，用户会自行整理）。"
 )
 
+AGENT_HEADER = (
+    "## 当前角色：{name}\n"
+    "用户通过 /{name} 引用了专属 agent。请严格按以下角色设定回答——与上方默认人设"
+    "冲突时，以这里为准；但「工具使用规则」整节仍然全部适用（知识沉淀、记忆、导出"
+    "照常可用）。\n\n{prompt}"
+)
+
 
 def memory_lines(memory_snippets) -> list[str]:
     """每条记忆一行：id 在前，供模型 replaces_entry_id 精确引用"""
@@ -112,11 +119,16 @@ def build_system_prompt(
     memory_snippets=None,
     conversation_summary: str | None = None,
     mcp_enabled: bool = False,
+    agent_name: str | None = None,
+    agent_prompt: str | None = None,
 ) -> str:
-    parts = [
-        PERSONA,
-        TOOL_RULES + "\n\n" + MCP_MANAGE_RULES + ("\n\n" + MCP_RULES if mcp_enabled else ""),
-    ]
+    # agent 角色段插在默认人设之后、工具规则之前：人格可被覆盖，工具能力不裁剪
+    parts = [PERSONA]
+    if agent_name and agent_prompt:
+        parts.append(AGENT_HEADER.format(name=agent_name, prompt=agent_prompt))
+    parts.append(
+        TOOL_RULES + "\n\n" + MCP_MANAGE_RULES + ("\n\n" + MCP_RULES if mcp_enabled else "")
+    )
     if conversation_summary:
         parts.append(CONVERSATION_SUMMARY_HEADER + "\n\n" + conversation_summary)
     if profile_snippets:

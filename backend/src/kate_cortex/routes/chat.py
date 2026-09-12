@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
+from ..agents import resolve_agent, strip_agent_token
 from ..attachments import (
     AttachmentError,
     image_refs,
@@ -32,6 +33,27 @@ from ..providers.base import ProviderError
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 HISTORY_ROUNDS = KEEP_ROUNDS  # 最近 N 轮原文；更早的由 summarizer 压缩（IMP-7）
+
+
+def _resolve_chat_agent(settings: dict, session, content: str):
+    """解析消息开头 `/名称` 引用的 agent（AGENTS_PLAN.md §3.3）。
+
+    返回 (agent, provider_name, model_name)：agent 未指定模型时为会话模型；
+    指定了模型则请求级生效（不落会话），并校验对应 key 已配置。regenerate /
+    resend 复用：从最后一条用户消息解析，改了 agent 配置后重生成走当前配置，
+    编辑时删掉前缀即回落默认 Kate。"""
+    agent = resolve_agent(strip_images(content), settings["agents"])
+    if agent and agent.get("provider") and agent.get("model"):
+        if not settings["provider_keys"].get(agent["provider"]):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"agent「{agent['name']}」指定的 {agent['provider']} 未配置"
+                    " API key，请先到设置页填写，或修改该 agent 的指定模型"
+                ),
+            )
+        return agent, agent["provider"], agent["model"]
+    return agent, session.provider, session.model
 
 
 @router.post("/sessions", status_code=201, response_model=SessionOut)
@@ -119,6 +141,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
         raise HTTPException(status_code=422, detail="消息内容不能为空")
 
     settings = get_services(request).settings_service.get_all()
+    agent, provider_name, model_name = _resolve_chat_agent(settings, session, payload.content)
     rag_enabled = (
         payload.rag_enabled if payload.rag_enabled is not None else settings["rag_default"]
     )
@@ -128,11 +151,11 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
     # 多模态：图片落盘 vault/attachments/，content 以 markdown 引用携带（本地可追溯）
     content = payload.content
     if payload.images:
-        if not vision_supported(session.provider, session.model):
+        if not vision_supported(provider_name, model_name):
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"当前模型 {session.provider}/{session.model} 不支持图片，"
+                    f"当前模型 {provider_name}/{model_name} 不支持图片，"
                     "请切换到带「视觉」标注的模型（如 GLM 编程套餐 glm-5.3）"
                 ),
             )
@@ -142,9 +165,13 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             raise HTTPException(status_code=400, detail=str(exc))
         content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in rels)
 
-    vision = vision_supported(session.provider, session.model)
+    vision = vision_supported(provider_name, model_name)
     chat_service.append_message(session_id, "user", content)
-    chat_service.ensure_title(session_id, strip_images(content))
+    # 引用 agent 时标题剥掉 `/名称` 前缀（前缀仍保留在消息里，历史可见可追溯）
+    title_source = (
+        strip_agent_token(strip_images(content)) if agent else strip_images(content)
+    )
+    chat_service.ensure_title(session_id, title_source)
     history = _history_messages(
         chat_service, session_id, get_services(request).storage.vault, vision
     )
@@ -158,6 +185,9 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             rag_enabled=rag_enabled,
             memory_enabled=memory_enabled,
             export_dir=export_dir,
+            agent=agent,
+            provider_name=provider_name,
+            model_name=model_name,
         ),
         media_type="text/event-stream",
     )
@@ -175,12 +205,13 @@ def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
         raise HTTPException(status_code=404, detail="没有可重新生成的消息")
 
     settings = get_services(request).settings_service.get_all()
+    agent, provider_name, model_name = _resolve_chat_agent(settings, session, last_user.content)
     chat_service.delete_messages_after(session_id, last_user.id)
     history = _history_messages(
         chat_service,
         session_id,
         get_services(request).storage.vault,
-        vision_supported(session.provider, session.model),
+        vision_supported(provider_name, model_name),
     )
     return StreamingResponse(
         _stream_response(
@@ -195,6 +226,9 @@ def regenerate(session_id: str, payload: ChatRegenerate, request: Request):
             ),
             memory_enabled=settings.get("memory_enabled", True),
             export_dir=(settings.get("export_dir") or "").strip() or None,
+            agent=agent,
+            provider_name=provider_name,
+            model_name=model_name,
         ),
         media_type="text/event-stream",
     )
@@ -220,13 +254,14 @@ def resend(session_id: str, message_id: str, payload: ChatResend, request: Reque
             content = content + "\n\n" + "\n".join(f"![图片]({rel})" for rel in refs)
 
     settings = get_services(request).settings_service.get_all()
+    agent, provider_name, model_name = _resolve_chat_agent(settings, session, content)
     chat_service.update_message(message_id, content)
     chat_service.delete_messages_after(session_id, message_id)
     history = _history_messages(
         chat_service,
         session_id,
         get_services(request).storage.vault,
-        vision_supported(session.provider, session.model),
+        vision_supported(provider_name, model_name),
     )
     return StreamingResponse(
         _stream_response(
@@ -241,6 +276,9 @@ def resend(session_id: str, message_id: str, payload: ChatResend, request: Reque
             ),
             memory_enabled=settings.get("memory_enabled", True),
             export_dir=(settings.get("export_dir") or "").strip() or None,
+            agent=agent,
+            provider_name=provider_name,
+            model_name=model_name,
         ),
         media_type="text/event-stream",
     )
@@ -264,16 +302,20 @@ def _stream_response(
     rag_enabled: bool,
     memory_enabled: bool,
     export_dir: str | None,
+    agent: dict | None = None,
+    provider_name: str | None = None,
+    model_name: str | None = None,
 ):
     """chat / regenerate / resend 共用的 SSE 生成器：RAG 检索 → citations →
-    agent loop（结束后由 run_agent_chat 落库 assistant 消息）"""
+    agent loop（结束后由 run_agent_chat 落库 assistant 消息）。
+    provider_name/model_name 为 agent 指定的请求级覆盖（None 用会话模型）"""
     chat_service = get_services(request).chat_service
     session_id = session.id
 
     def generate():
         try:
             provider = get_services(request).provider_factory(
-                session.provider, session.model
+                provider_name or session.provider, model_name or session.model
             )
         except ProviderError as exc:
             yield sse_event("error", {"message": str(exc)})
@@ -326,6 +368,7 @@ def _stream_response(
             memory_enabled=memory_enabled,
             mcp=mcp,
             export_dir=export_dir,
+            agent=agent,
         )
 
     return generate()

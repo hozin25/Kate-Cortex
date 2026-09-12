@@ -39,6 +39,7 @@ def run_agent_chat(
     memory_enabled: bool = False,
     mcp: McpContext | None = None,
     export_dir: str | None = None,
+    agent: dict | None = None,
 ) -> Iterator[str]:
     mcp = mcp or McpContext(_NullSettings())
     system_prompt = build_system_prompt(
@@ -48,6 +49,8 @@ def run_agent_chat(
         memory_snippets=memory_snippets,
         conversation_summary=conversation_summary,
         mcp_enabled=mcp.has_tools,
+        agent_name=(agent or {}).get("name"),
+        agent_prompt=(agent or {}).get("prompt"),
     )
     messages = [{"role": "system", "content": system_prompt}, *history]
     # 基础工具固定；MCP 工具表每轮从 mcp.tool_defs() 现取——
