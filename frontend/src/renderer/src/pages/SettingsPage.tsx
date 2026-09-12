@@ -632,7 +632,7 @@ export function SettingsPage(): React.JSX.Element {
                     {mcpTesting[server.id]
                       ? '正在连接…'
                       : server.status
-                        ? `${server.status.ok ? '✓ 可用' : '✕ 不可用'} · ${server.status.message}（${server.status.checked_at.replace('T', ' ')} 检测）`
+                        ? `${server.status.ok ? '✓ 可用' : '✕ 不可用'} · ${server.status.message}（${(server.status.checked_at ?? '').replace('T', ' ')} 检测）`
                         : '未检测：对话涉及实时数据时会自动探测'}
                   </p>
                 </div>

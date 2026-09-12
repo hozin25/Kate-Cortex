@@ -8,6 +8,7 @@ config（环境变量/默认值）决定，GET /api/settings 返回当前生效�
 
 import json
 import sqlite3
+import threading
 
 from .agent_presets import BUILTIN_AGENTS
 from .security import decrypt_secret, encrypt_secret
@@ -32,93 +33,102 @@ KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding", "siliconflow", "modelscope"}
 class SettingsService:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
+        # FastAPI 的 sync 路由跑在线程池：共享连接被并发使用时出现过游标状态错乱
+        # （get_all 间歇性 IndexError/串列，GUI 实测设置页因此崩过）。settings 是
+        # 每个页面挂载都会并发读的热路径——实例级锁把读写串行化；多用户形态下
+        # 每用户独立实例，锁互不影响
+        self._lock = threading.RLock()
 
     def get_all(self) -> dict:
-        result = dict(DEFAULTS)
-        rows = self.conn.execute("SELECT key, value FROM settings").fetchall()
-        for row in rows:
-            if row["key"] == "vault_path":
-                continue  # 历史遗留的无效设置，不再透出
-            result[row["key"]] = json.loads(row["value"])
-        result["provider_keys"] = {
-            name: decrypt_secret(value)
-            for name, value in (result.get("provider_keys") or {}).items()
-            if value
-        }
-        result["embedding_api_key"] = decrypt_secret(result.get("embedding_api_key"))
-        return result
+        with self._lock:
+            result = dict(DEFAULTS)
+            rows = self.conn.execute("SELECT key, value FROM settings").fetchall()
+            for row in rows:
+                if row["key"] == "vault_path":
+                    continue  # 历史遗留的无效设置，不再透出
+                result[row["key"]] = json.loads(row["value"])
+            result["provider_keys"] = {
+                name: decrypt_secret(value)
+                for name, value in (result.get("provider_keys") or {}).items()
+                if value
+            }
+            result["embedding_api_key"] = decrypt_secret(result.get("embedding_api_key"))
+            return result
 
     def update(self, patch: dict) -> dict:
-        for provider in patch.get("provider_keys", {}):
-            if provider not in KNOWN_PROVIDERS:
-                raise ValueError(f"未知 provider: {provider}")
-        current = self.get_all()
-        merged = {**current, **{k: v for k, v in patch.items() if v is not None}}
-        with self.conn:
-            for key, value in merged.items():
-                self.conn.execute(
-                    "INSERT INTO settings (key, value) VALUES (?, ?)"
-                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (key, json.dumps(self._encrypt_field(key, value), ensure_ascii=False)),
-                )
-        return self.get_all()
+        with self._lock:
+            for provider in patch.get("provider_keys", {}):
+                if provider not in KNOWN_PROVIDERS:
+                    raise ValueError(f"未知 provider: {provider}")
+            current = self.get_all()
+            merged = {**current, **{k: v for k, v in patch.items() if v is not None}}
+            with self.conn:
+                for key, value in merged.items():
+                    self.conn.execute(
+                        "INSERT INTO settings (key, value) VALUES (?, ?)"
+                        " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                        (key, json.dumps(self._encrypt_field(key, value), ensure_ascii=False)),
+                    )
+            return self.get_all()
 
     def migrate_mcp_url(self) -> bool:
         """旧版单端点 mcp_url → mcp_servers 列表（幂等；迁移后删除旧键）。
         已配置了非空 mcp_servers 时不覆盖，避免吞掉新配置"""
-        rows = {
-            row["key"]: row["value"]
-            for row in self.conn.execute(
-                "SELECT key, value FROM settings WHERE key IN ('mcp_url', 'mcp_servers')"
-            ).fetchall()
-        }
-        if "mcp_url" not in rows:
-            return False
-        if "mcp_servers" in rows and json.loads(rows["mcp_servers"]):
-            return False
-        url = (json.loads(rows["mcp_url"]) or "").strip()
-        if url:
-            self.update(
-                {
-                    "mcp_servers": [
-                        {"id": "mcp", "name": "MCP 服务", "url": url, "enabled": True}
-                    ]
-                }
-            )
-        with self.conn:
-            self.conn.execute("DELETE FROM settings WHERE key = 'mcp_url'")
-        return True
+        with self._lock:
+            rows = {
+                row["key"]: row["value"]
+                for row in self.conn.execute(
+                    "SELECT key, value FROM settings WHERE key IN ('mcp_url', 'mcp_servers')"
+                ).fetchall()
+            }
+            if "mcp_url" not in rows:
+                return False
+            if "mcp_servers" in rows and json.loads(rows["mcp_servers"]):
+                return False
+            url = (json.loads(rows["mcp_url"]) or "").strip()
+            if url:
+                self.update(
+                    {
+                        "mcp_servers": [
+                            {"id": "mcp", "name": "MCP 服务", "url": url, "enabled": True}
+                        ]
+                    }
+                )
+            with self.conn:
+                self.conn.execute("DELETE FROM settings WHERE key = 'mcp_url'")
+            return True
 
     def encrypt_existing_secrets(self) -> int:
         """启动迁移：历史明文 key 就地重写为密文（幂等，返回改写条数）"""
-        changed = 0
-        row = self.conn.execute(
-            "SELECT value FROM settings WHERE key = 'provider_keys'"
-        ).fetchone()
-        if row is not None:
-            keys = json.loads(row[0])
-            if any(keys.values()):
-                encrypted = {name: encrypt_secret(v) for name, v in keys.items()}
-                if encrypted != keys:
+        with self._lock:
+            changed = 0
+            row = self.conn.execute(
+                "SELECT value FROM settings WHERE key = 'provider_keys'"
+            ).fetchone()
+            if row is not None:
+                keys = json.loads(row[0])
+                if any(keys.values()):
+                    encrypted = {name: encrypt_secret(v) for name, v in keys.items()}
+                    if encrypted != keys:
+                        with self.conn:
+                            self.conn.execute(
+                                "UPDATE settings SET value = ? WHERE key = 'provider_keys'",
+                                (json.dumps(encrypted, ensure_ascii=False),),
+                            )
+                        changed += 1
+            row = self.conn.execute(
+                "SELECT value FROM settings WHERE key = 'embedding_api_key'"
+            ).fetchone()
+            if row is not None:
+                stored = json.loads(row[0])
+                if stored and encrypt_secret(stored) != stored:
                     with self.conn:
                         self.conn.execute(
-                            "UPDATE settings SET value = ? WHERE key = 'provider_keys'",
-                            (json.dumps(encrypted, ensure_ascii=False),),
+                            "UPDATE settings SET value = ? WHERE key = 'embedding_api_key'",
+                            (json.dumps(encrypt_secret(stored), ensure_ascii=False),),
                         )
                     changed += 1
-        row = self.conn.execute(
-            "SELECT value FROM settings WHERE key = 'embedding_api_key'"
-        ).fetchone()
-        if row is not None:
-            stored = json.loads(row[0])
-            if stored and encrypt_secret(stored) != stored:
-                with self.conn:
-                    self.conn.execute(
-                        "UPDATE settings SET value = ? WHERE key = 'embedding_api_key'",
-                        (json.dumps(encrypt_secret(stored), ensure_ascii=False),),
-                    )
-                changed += 1
-        return changed
+            return changed
 
     @staticmethod
     def _encrypt_field(key: str, value):
