@@ -124,6 +124,18 @@ export interface McpServer {
   enabled: boolean
 }
 
+/** 自定义 agent（AGENTS_PLAN.md）：provider/model 成对留空 = 跟随会话模型 */
+export interface Agent {
+  id: string
+  name: string
+  description: string
+  prompt: string
+  provider: string | null
+  model: string | null
+  enabled: boolean
+  created_at: string
+}
+
 /** 最近一次实测（list_tools）的连通状态，设置页展示「可用 / 不可用」 */
 export interface McpServerStatus {
   ok: boolean

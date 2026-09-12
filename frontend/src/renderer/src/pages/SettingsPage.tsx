@@ -15,12 +15,15 @@ import {
 } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
+import { ToggleSwitch } from '@renderer/components/common/ToggleSwitch'
+import { AgentsPanel } from '@renderer/components/settings/AgentsPanel'
 import { useSettingsStore } from '@renderer/stores/settings'
 import { useAuthStore } from '@renderer/stores/auth'
 import { toast } from '@renderer/stores/toast'
 import { api } from '@renderer/api/client'
 import { cn, maskSecretUrl } from '@renderer/lib/utils'
 import { isElectron } from '@renderer/lib/runtime'
+import { PROVIDERS } from '@renderer/lib/providers'
 import { getTheme, setTheme, type Theme } from '@renderer/lib/theme'
 import type {
   AppSettings,
@@ -31,29 +34,6 @@ import type {
   McpServerWithStatus,
   ProviderName
 } from '@renderer/types'
-
-const PROVIDERS: { name: ProviderName; label: string; keyHint: string; modelHint: string }[] = [
-  { name: 'glm', label: 'GLM（智谱）', keyHint: '…xxx.Sxxxx', modelHint: 'glm-4.7-flash' },
-  {
-    name: 'siliconflow',
-    label: '硅基流动（免费档）',
-    keyHint: 'sk-…',
-    modelHint: 'Qwen/Qwen3-8B'
-  },
-  {
-    name: 'modelscope',
-    label: '魔搭 ModelScope（每日 2000 次免费）',
-    keyHint: 'ms-…',
-    modelHint: 'Qwen/Qwen3-235B-A22B-Instruct-2507'
-  },
-  { name: 'deepseek', label: 'DeepSeek', keyHint: 'sk-…', modelHint: 'deepseek-chat' },
-  {
-    name: 'glm-coding',
-    label: 'GLM 编程套餐',
-    keyHint: '…xxx.Sxxxx（与智谱 API key 相同）',
-    modelHint: 'glm-5.3'
-  }
-]
 
 const EMBED_PROVIDERS: {
   name: EmbeddingProviderName
@@ -689,6 +669,8 @@ export function SettingsPage(): React.JSX.Element {
           </div>
         </GlassPanel>
 
+        <AgentsPanel />
+
         <GlassPanel className="p-5">
           <div className="flex items-center gap-2 text-sm font-medium text-zinc-200">
             <FileDown className="size-4 text-aurora-indigo" />
@@ -845,34 +827,6 @@ function ThemeOption({ active, onClick, label }: ThemeOptionProps): React.JSX.El
       )}
     >
       {label}
-    </button>
-  )
-}
-
-interface ToggleSwitchProps {
-  checked: boolean
-  onChange: (checked: boolean) => void
-}
-
-function ToggleSwitch({ checked, onChange }: ToggleSwitchProps): React.JSX.Element {
-  return (
-    <button
-      onClick={() => onChange(!checked)}
-      className={cn(
-        'relative h-6 w-11 shrink-0 rounded-full border transition',
-        checked ? 'border-aurora-cyan/40 bg-aurora-cyan/25' : 'border-white/10 bg-white/[0.06]'
-      )}
-      role="switch"
-      aria-checked={checked}
-    >
-      <span
-        className={cn(
-          'absolute top-0.5 size-4.5 rounded-full transition-all',
-          checked
-            ? 'left-[22px] bg-aurora-cyan shadow-[0_0_8px] shadow-aurora-cyan'
-            : 'left-0.5 bg-zinc-400'
-        )}
-      />
     </button>
   )
 }
