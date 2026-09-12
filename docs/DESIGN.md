@@ -730,6 +730,15 @@ MVP 合计 6~7 人天。
 - [x] embedding provider 选型（2026-09-01 拍板）：GLM embedding-3——OpenAI 兼容、
   复用现有 glm key 用户零新配置、支持 1024 维（见 §7.2）；硅基流动/本地模型留扩展位
 - [x] 项目名：维持 Kate-Cortex（2026-08-17 拍板）
+- [ ] 云端多用户版的服务器采购与上线（2026-09-12 搁置，触发条件：想让
+  微信/网页端真正用起来时再做）。代码侧已全部就绪——Dockerfile /
+  docker-compose.yml + 邀请码注册、每账号独立数据目录、Fernet 密钥加密、
+  SSRF 防护（见 §16），剩余事项：① 选机器：国内轻量云新人价约 ¥50-100/年
+  （微信访问最快；绑域名需 ICP 备案，不备案可先用 IP:端口）或家里闲置设备 +
+  Cloudflare Tunnel（零成本）② `docker compose up -d --build` 部署，`.env`
+  设置 KATE_INVITE_CODE / KATE_SECRET_KEY ③ 套 HTTPS（Caddy/Nginx）后设
+  KATE_COOKIE_SECURE=1 ④ 备份 = 备份 ./data 目录。注意：Vercel 试用版保持
+  免登录单用户形态（serverless 无持久盘，不承载账号与持久数据）
 
 ---
 
