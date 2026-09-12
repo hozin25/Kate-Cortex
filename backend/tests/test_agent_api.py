@@ -227,6 +227,7 @@ class TestAgentLoopEdges:
         assert tool_names == [
             "save_knowledge",
             "suggest_save",
+            "search_knowledge",
             "export_markdown",
             "save_memory",
             "recall_memory",
@@ -246,10 +247,56 @@ class TestAgentLoopEdges:
         assert tool_names == [
             "save_knowledge",
             "suggest_save",
+            "search_knowledge",
             "export_markdown",
             "install_mcp",
             "remove_mcp",
         ]
+
+
+class TestSearchKnowledgeTool:
+    def test_search_feeds_results_back_without_sse_event(self, client):
+        client.post(
+            "/api/entries",
+            json={
+                "title": "布洛芬说明书要点",
+                "content": "用于退烧、止痛。成人一次 0.2-0.4g，每 6-8 小时一次，24 小时不超过 4 次。",
+                "source": "manual",
+            },
+        )
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas("call_1", "search_knowledge", {"query": "布洛芬 用法用量"})
+                + [Done("tool_calls")],
+                [TextDelta("根据知识库《布洛芬说明书要点》，成人一次 0.2-0.4g。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        events = parse_sse(chat(client, session_id).text)
+        names = [name for name, _ in events]
+        assert names == ["citations", "delta", "done"]  # 检索不单独推事件
+
+        tool_msg = fake.calls[1]["messages"][-1]
+        assert tool_msg["role"] == "tool"
+        assert "布洛芬说明书要点" in tool_msg["content"]
+        assert "0.2-0.4g" in tool_msg["content"]
+
+    def test_search_without_hit_reports_empty(self, client):
+        session_id = start_session(client)
+        fake = FakeProvider(
+            rounds=[
+                tool_call_deltas("call_1", "search_knowledge", {"query": "不存在的条目"})
+                + [Done("tool_calls")],
+                [TextDelta("知识库里没有相关资料。"), Done("stop")],
+            ]
+        )
+        client.app.state.provider_factory = lambda name, model=None: fake
+
+        parse_sse(chat(client, session_id).text)
+        tool_msg = fake.calls[1]["messages"][-1]
+        assert "没有检索到相关知识条目" in tool_msg["content"]
 
 
 class TestMemoryFlow:

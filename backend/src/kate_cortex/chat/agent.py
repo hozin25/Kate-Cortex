@@ -8,7 +8,7 @@ from ..providers.base import TextDelta, ToolCallAccumulator, ToolCallDelta
 from ..skills.export import TOOLS as EXPORT_TOOLS
 from ..skills.export import export_markdown
 from ..skills.knowledge import TOOLS as KNOWLEDGE_TOOLS
-from ..skills.knowledge import save_knowledge, suggest_save
+from ..skills.knowledge import save_knowledge, search_knowledge, suggest_save
 from ..skills.mcp_manage import TOOLS as MCP_MANAGE_TOOLS
 from ..skills.mcp_manage import install_mcp, remove_mcp
 from ..skills.memory import TOOLS as MEMORY_TOOLS
@@ -140,6 +140,8 @@ def _execute_tool(
             return save_knowledge(storage, args, conversation_id=session_id)
         if name == "suggest_save":
             return suggest_save(args)
+        if name == "search_knowledge":
+            return search_knowledge(storage, args)
         if name == "export_markdown":
             return export_markdown(args, export_dir=export_dir)
         if name == "save_memory":
@@ -166,6 +168,8 @@ def _sse_event(name: str, result: dict) -> str | None:
         return "memory_saved"
     if name == "recall_memory":
         return "memory_refs" if result.get("memories") else None
+    if name == "search_knowledge":
+        return None  # 检索结果只回传模型作引用依据，不单独推事件
     if name == "export_markdown":
         return "file_saved"
     if "entry_id" in result:
@@ -193,6 +197,13 @@ def _tool_summary(call: dict, result: dict) -> str:
         )
     if name == "export_markdown":
         return f"已导出《{result['title']}》到 {result['file_path']}"
+    if name == "search_knowledge":
+        results = result.get("results") or []
+        if not results:
+            return "没有检索到相关知识条目"
+        return "检索到相关知识条目: " + "；".join(
+            f"《{r['title']}》 {r['excerpt'][:120]}" for r in results
+        )
     if "entry_id" in result:
         return f"已保存知识条目《{result['title']}》(id={result['entry_id']})"
     return "已展示保存建议卡片，等待用户确认，未写入知识库"

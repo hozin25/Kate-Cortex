@@ -299,11 +299,12 @@ class TestAgentIntegration:
         # MCP 工具结果以纯文本回传模型，不产生独立 SSE 事件
         assert names == ["citations", "delta", "done"]
 
-        # 工具表 = 本地 7 个 + 命名空间化的 MCP 工具
+        # 工具表 = 本地 8 个 + 命名空间化的 MCP 工具
         tool_names = [t["function"]["name"] for t in fake.calls[0]["tools"]]
-        assert tool_names[:5] == [
+        assert tool_names[:6] == [
             "save_knowledge",
             "suggest_save",
+            "search_knowledge",
             "export_markdown",
             "save_memory",
             "recall_memory",
