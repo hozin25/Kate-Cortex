@@ -25,6 +25,7 @@ DEFAULTS = {
     "mcp_servers": [],  # MCP 服务列表 [{id, name, url, enabled}]，经 /mcp/servers 或 install_mcp 管理
     "agents": BUILTIN_AGENTS,  # 自定义 agent；预置「私人生活医生」（agent_presets.py），增删改后以库内为准
     "export_dir": None,  # export_markdown 导出文件夹；空则用 文档\Kate-Cortex 导出
+    "import_enrich": True,  # 导入后前端自动跑 /import/enrich 加工（补 keywords/importance/合集）
 }
 
 KNOWN_PROVIDERS = {"deepseek", "glm", "glm-coding", "siliconflow", "modelscope"}

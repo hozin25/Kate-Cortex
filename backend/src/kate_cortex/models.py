@@ -195,6 +195,7 @@ class SettingsUpdate(BaseModel):
     embedding_model: str | None = None
     embedding_api_key: str | None = None
     export_dir: str | None = None
+    import_enrich: bool | None = None
 
 
 class SettingsOut(BaseModel):
@@ -209,6 +210,36 @@ class SettingsOut(BaseModel):
     embedding_api_key: str | None
     mcp_servers: list[McpServerOut]
     export_dir: str | None
+    import_enrich: bool
+
+
+class EnrichIn(BaseModel):
+    """分批加工：单请求 limit 条（上限控制单请求时长 ~1 分钟内）"""
+
+    limit: int = Field(default=8, ge=1, le=24)
+
+
+class EnrichDuplicateOut(BaseModel):
+    entry_id: str
+    title: str
+    similarity: float
+
+
+class EnrichItemOut(BaseModel):
+    entry_id: str
+    title: str
+    keywords: list[str]
+    importance: int | None
+    collection: str | None
+    duplicates: list[EnrichDuplicateOut]
+
+
+class EnrichOut(BaseModel):
+    processed: int
+    remaining: int
+    done: bool
+    enriched: list[EnrichItemOut]
+    skipped: list[str]
 
 
 class EmbeddingStatusOut(BaseModel):

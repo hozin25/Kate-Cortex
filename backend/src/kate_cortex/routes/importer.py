@@ -1,8 +1,11 @@
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from ..enrich import EnrichError, enrich_batch
 from ..importer import ImportError_, import_obsidian, import_vault
+from ..models import EnrichIn, EnrichOut
 from ..multiuser import get_services
+from ..providers.base import ProviderError
 
 router = APIRouter(tags=["import"])
 
@@ -46,3 +49,20 @@ def obsidian_import(payload: ObsidianImportIn, request: Request):
     except ImportError_ as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return report.as_dict()
+
+
+@router.post("/import/enrich", response_model=EnrichOut)
+def import_enrich(payload: EnrichIn, request: Request):
+    """分批加工 import 条目（IMPORT_ENRICH_PLAN.md）：前端循环调用直到 done。
+    provider 走默认会话模型；构建或调用失败 400，前端据此停止循环并提示"""
+    services = get_services(request)
+    settings = services.settings_service.get_all()
+    try:
+        provider = services.provider_factory(settings["default_provider"])
+    except ProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        result = enrich_batch(services.storage, provider, limit=payload.limit)
+    except EnrichError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return result.as_dict()
