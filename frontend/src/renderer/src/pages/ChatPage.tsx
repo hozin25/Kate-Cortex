@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'motion/react'
 import { MessagesSquare, MessageSquarePlus, PanelLeftOpen, Search } from 'lucide-react'
 import { api } from '@renderer/api/client'
+import { BriefingCard } from '@renderer/components/chat/BriefingCard'
 import { ChatInput, RagToggle } from '@renderer/components/chat/ChatInput'
 import { MessageBubble, StreamingBubble } from '@renderer/components/chat/MessageBubble'
 import { ModelPicker } from '@renderer/components/chat/ModelPicker'
@@ -97,9 +98,7 @@ export function ChatPage(): React.JSX.Element {
           onClick={() =>
             void store
               .createSession(pickStartProvider(settings))
-              .catch((err) =>
-                toast.error(err instanceof Error ? err.message : '创建会话失败')
-              )
+              .catch((err) => toast.error(err instanceof Error ? err.message : '创建会话失败'))
           }
           className="flex shrink-0 items-center gap-2 rounded-xl border border-aurora-indigo/30 bg-gradient-to-r from-aurora-indigo/20 to-aurora-violet/15 px-5 py-2.5 text-sm font-medium text-zinc-100 transition hover:brightness-125"
         >
@@ -151,9 +150,9 @@ export function ChatPage(): React.JSX.Element {
               catalog={catalog}
               disabled={streaming}
               onSwitch={(p, m) =>
-                store.switchModel(p, m).catch((err) =>
-                  toast.error(err instanceof Error ? err.message : '模型切换失败')
-                )
+                store
+                  .switchModel(p, m)
+                  .catch((err) => toast.error(err instanceof Error ? err.message : '模型切换失败'))
               }
             />
           )}
@@ -166,6 +165,7 @@ export function ChatPage(): React.JSX.Element {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 sm:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-5 py-4">
+          <BriefingCard />
           {keyword && (
             <p className="text-center text-xs text-zinc-500">
               命中 {visibleMessages.length} / {messages.length} 条消息
@@ -178,19 +178,21 @@ export function ChatPage(): React.JSX.Element {
             </p>
           )}
           {visibleMessages.length === 0 && keyword ? (
-            <p className="py-8 text-center text-sm text-zinc-500">本会话没有命中「{search.trim()}」的消息</p>
+            <p className="py-8 text-center text-sm text-zinc-500">
+              本会话没有命中「{search.trim()}」的消息
+            </p>
           ) : (
             visibleMessages.map((m, i) => (
-            <MessageBubble
-              key={m.id}
-              message={m}
-              isLast={i === messages.length - 1}
-              highlight={Boolean(keyword)}
-              streaming={streaming}
-              onRegenerate={() => void store.regenerate()}
-              onEdit={(content) => void store.editMessage(m.id, content)}
-              onDelete={() => void store.deleteMessage(m.id)}
-            />
+              <MessageBubble
+                key={m.id}
+                message={m}
+                isLast={i === messages.length - 1}
+                highlight={Boolean(keyword)}
+                streaming={streaming}
+                onRegenerate={() => void store.regenerate()}
+                onEdit={(content) => void store.editMessage(m.id, content)}
+                onDelete={() => void store.deleteMessage(m.id)}
+              />
             ))
           )}
 

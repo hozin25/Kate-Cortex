@@ -240,3 +240,18 @@ export interface ConsolidationStatus {
   candidates: number
   vector_available: boolean
 }
+
+// ── 每日简报（BRIEFING_PLAN.md）──
+
+export interface BriefingItem {
+  kind: 'due' | 'followup' | 'tip'
+  text: string
+  entry_id?: string | null
+}
+
+export interface Briefing {
+  date: string
+  greeting: string
+  items: BriefingItem[]
+  cached: boolean
+}
