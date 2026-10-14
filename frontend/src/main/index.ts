@@ -139,7 +139,7 @@ app.whenReady().then(async () => {
   // 全局速记热键（CAPTURE_PLAN.md §2）；被占用时降级为仅应用内可用
   createCaptureWindow()
   if (!globalShortcut.register('CommandOrControl+Shift+K', toggleCaptureWindow)) {
-    console.warn('全局快捷键 Ctrl+Shift+K 注册失败（可能被其他应用占用），速记窗仅可从应用内唤起')
+    console.warn('全局快捷键 Ctrl+Shift+K 注册失败（可能被其他应用占用），本次运行无法唤起速记窗，可重启应用重试')
   }
 
   // 启动 10s 后做一次轻量更新检查（不阻塞首屏；失败静默）
