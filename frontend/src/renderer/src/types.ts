@@ -195,3 +195,48 @@ export interface Projection {
   computed_ms: number
   points: ProjectionPoint[]
 }
+
+// ── 记忆巩固（CONSOLIDATE_PLAN.md）──
+
+export interface ProposalEntry {
+  id: string
+  title: string
+  content: string
+  created_at: string
+}
+
+export interface ConsolidationProposal {
+  id: string
+  kind: 'conflict' | 'profile_update' | 'profile_create'
+  created_at: string
+  pair?: string | null
+  a?: ProposalEntry
+  b?: ProposalEntry
+  target_id?: string | null
+  title?: string | null
+  content?: string | null
+  reason: string
+}
+
+export interface ConsolidationReport {
+  ran_at: string
+  merged: {
+    kept_id: string
+    kept_title: string
+    trashed_id: string
+    trashed_title: string
+    reason: string
+  }[]
+  adjusted: { entry_id: string; title: string; from: number; to: number }[]
+  archived: { entry_id: string; title: string }[]
+  conflicts_queued: number
+  profile_proposals: number
+}
+
+export interface ConsolidationStatus {
+  consolidated_at: string | null
+  report: ConsolidationReport | null
+  proposals: ConsolidationProposal[]
+  candidates: number
+  vector_available: boolean
+}

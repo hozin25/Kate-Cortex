@@ -3,6 +3,7 @@ import { Brain, Check, Pencil, Search, Star, Trash2, X } from 'lucide-react'
 import { GlassPanel } from '@renderer/components/common/Glass'
 import { Spinner } from '@renderer/components/common/Badges'
 import { EmptyState } from '@renderer/components/common/EmptyState'
+import { ConsolidationPanel } from '@renderer/components/memories/ConsolidationPanel'
 import { api } from '@renderer/api/client'
 import { toast } from '@renderer/stores/toast'
 import { cn } from '@renderer/lib/utils'
@@ -75,26 +76,31 @@ export function MemoriesPage(): React.JSX.Element {
           <div className="flex justify-center py-16">
             <Spinner className="size-6 text-zinc-500" />
           </div>
-        ) : filtered.length === 0 ? (
-          memories?.length === 0 ? (
-            <EmptyState
-              icon={<Brain className="size-7" />}
-              title="还没有记忆"
-              hint="开启自动记忆后，Kate 会在对话中自动记住关于你的重要事实（健康、计划、偏好），并在此集中管理。"
-            />
-          ) : (
-            <EmptyState
-              icon={<Search className="size-7" />}
-              title="没有匹配的记忆"
-              hint="换个关键词试试。"
-            />
-          )
         ) : (
-          <div className="flex flex-col gap-2.5">
-            {filtered.map((m) => (
-              <MemoryCard key={m.id} memory={m} onChanged={load} />
-            ))}
-          </div>
+          <>
+            <ConsolidationPanel onChanged={load} />
+            {filtered.length === 0 ? (
+              memories?.length === 0 ? (
+                <EmptyState
+                  icon={<Brain className="size-7" />}
+                  title="还没有记忆"
+                  hint="开启自动记忆后，Kate 会在对话中自动记住关于你的重要事实（健康、计划、偏好），并在此集中管理。"
+                />
+              ) : (
+                <EmptyState
+                  icon={<Search className="size-7" />}
+                  title="没有匹配的记忆"
+                  hint="换个关键词试试。"
+                />
+              )
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                {filtered.map((m) => (
+                  <MemoryCard key={m.id} memory={m} onChanged={load} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

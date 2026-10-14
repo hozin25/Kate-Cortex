@@ -123,4 +123,74 @@ describe('MemoriesPage', () => {
 
     await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/entries/kc_20260906_001'))
   })
+
+  it('整理面板：展开后显示状态与候选数', async () => {
+    api.get.mockResolvedValueOnce({ items: [memory()] })
+    api.get.mockResolvedValueOnce({
+      consolidated_at: null,
+      report: null,
+      proposals: [],
+      candidates: 3,
+      vector_available: true
+    })
+
+    render(<MemoriesPage />)
+    await waitFor(() => expect(screen.getByText('感冒了')).toBeInTheDocument())
+
+    await userEvent.click(screen.getByText('记忆整理'))
+
+    expect(await screen.findByText(/从未整理/)).toBeInTheDocument()
+    expect(screen.getByText(/约 3 对疑似重复/)).toBeInTheDocument()
+  })
+
+  it('整理面板：冲突提案展示两条记忆并可忽略', async () => {
+    api.get.mockResolvedValueOnce({ items: [memory()] })
+    api.get.mockResolvedValueOnce({
+      consolidated_at: '2026-10-14T09:00:00',
+      report: null,
+      vector_available: true,
+      candidates: 0,
+      proposals: [
+        {
+          id: 'prop_1',
+          kind: 'conflict',
+          created_at: '2026-10-14T09:00:00',
+          pair: 'a|b',
+          a: {
+            id: 'a',
+            title: '感冒不能喝酒',
+            content: '感冒期间不能喝酒。',
+            created_at: '2026-09-01T08:00:00'
+          },
+          b: {
+            id: 'b',
+            title: '感冒能喝酒',
+            content: '感冒了喝点酒发汗。',
+            created_at: '2026-10-01T08:00:00'
+          },
+          reason: '相互矛盾'
+        }
+      ]
+    })
+    api.delete.mockResolvedValueOnce([])
+    api.get.mockResolvedValueOnce({
+      consolidated_at: '2026-10-14T09:00:00',
+      report: null,
+      proposals: [],
+      candidates: 0,
+      vector_available: true
+    })
+
+    render(<MemoriesPage />)
+    await waitFor(() => expect(screen.getByText('感冒了')).toBeInTheDocument())
+    await userEvent.click(screen.getByText('记忆整理'))
+
+    expect(await screen.findByText('两条记忆相互冲突：')).toBeInTheDocument()
+    expect(screen.getByText(/感冒不能喝酒/)).toBeInTheDocument()
+    expect(screen.getByText(/感冒能喝酒/)).toBeInTheDocument()
+
+    await userEvent.click(screen.getByText('忽略'))
+
+    await waitFor(() => expect(api.delete).toHaveBeenCalledWith('/consolidate/proposals/prop_1'))
+  })
 })
