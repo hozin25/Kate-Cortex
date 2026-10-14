@@ -62,6 +62,20 @@ def list_memories(storage) -> list[MemorySnippet]:
     return memories
 
 
+def log_memory_hits(storage, memories, source: str) -> None:
+    """召回埋点（CONSOLIDATE_PLAN.md §1）：常驻注入/检索命中各记一行，
+    供巩固引擎统计召回次数与最近召回时间。失败只告警，绝不影响对话"""
+    try:
+        now = datetime.now().astimezone().isoformat(timespec="seconds")
+        with storage.conn:
+            storage.conn.executemany(
+                "INSERT INTO memory_hits (entry_id, recalled_at, source) VALUES (?, ?, ?)",
+                [(m.entry_id, now, source) for m in memories or []],
+            )
+    except Exception as exc:
+        logger.warning("记忆召回埋点写入失败: %s", exc)
+
+
 def resident_memories(storage, limit: int = RESIDENT_LIMIT) -> list[MemorySnippet]:
     """常驻注入：按 (importance, created_at) 降序取前 N 条。确定性命中
     「昨天感冒→今天提醒保暖」这类近期事项，不依赖模型自觉调用检索"""

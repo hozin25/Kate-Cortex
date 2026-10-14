@@ -6,7 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 # 向量混合检索（VECTOR_SEARCH_PLAN.md §4）：维度/距离度量在此定死，
 # 变更维度须整表重建（rebuild 端点覆盖）
@@ -92,6 +92,15 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 记忆召回埋点（CONSOLIDATE_PLAN.md §1，v7）：纯增量日志，供巩固引擎统计
+-- 召回次数/最近召回时间；丢失无害，不参与任何读取路径
+CREATE TABLE IF NOT EXISTS memory_hits (
+  entry_id    TEXT NOT NULL,
+  recalled_at TEXT NOT NULL,
+  source      TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_memory_hits_entry ON memory_hits(entry_id, recalled_at);
 """
 
 
@@ -154,6 +163,8 @@ class Database:
             pass  # v5：向量检索（entries_vec）。无数据搬迁，建表见 init_schema
         if current < 6:
             self._add_conversation_summary_columns()
+        if current < 7:
+            pass  # v7：记忆召回埋点表（memory_hits）。无数据搬迁，建表见 _SCHEMA
         self._conn.execute("UPDATE schema_version SET version = ?", (SCHEMA_VERSION,))
 
     def _rebuild_entries_without_type(self) -> None:

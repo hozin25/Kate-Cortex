@@ -7,6 +7,7 @@ embedder_factory 每次调用时从 settings 解析（对齐 ProviderFactory 的
 
 import logging
 import sqlite3
+import struct
 from dataclasses import dataclass
 from typing import Callable
 
@@ -59,12 +60,26 @@ class VectorIndex:
         if embedder is None:
             return []
         vector = embedder.embed([text])[0]
+        return self.query_by_vector(vector, limit)
+
+    def query_by_vector(self, vector: list[float], limit: int = 10) -> list[VectorHit]:
+        """以现成向量做 KNN（consolidator 找邻居用：免重复嵌入）"""
         rows = self._conn.execute(
             "SELECT entry_id, distance FROM entries_vec"
             " WHERE embedding MATCH ? AND k = ? ORDER BY distance",
             (sqlite_vec.serialize_float32(vector), limit),
         ).fetchall()
         return [VectorHit(row[0], row[1]) for row in rows]
+
+    def vector_of(self, entry_id: str) -> list[float] | None:
+        """读条目已存向量（float32 LE blob），未嵌入返回 None"""
+        row = self._conn.execute(
+            "SELECT embedding FROM entries_vec WHERE entry_id = ?", (entry_id,)
+        ).fetchone()
+        if row is None:
+            return None
+        blob = row[0]
+        return list(struct.unpack(f"{len(blob) // 4}f", blob))
 
     def clear(self) -> None:
         """清空向量表（须在调用方事务内执行）。只清不嵌——重嵌走显式 rebuild"""

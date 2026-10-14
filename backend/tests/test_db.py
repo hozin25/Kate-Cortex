@@ -184,7 +184,7 @@ class TestMigrateV4ToV5:
         database = db_mod.connect(db_path)
 
         version = database.conn.execute("SELECT version FROM schema_version").fetchone()
-        assert version[0] == db_mod.SCHEMA_VERSION == 6
+        assert version[0] == db_mod.SCHEMA_VERSION == 7
         assert database.migrated_from == 4
         row = database.conn.execute("SELECT id FROM entries").fetchone()
         assert row[0] == "kc_20260818_001"
@@ -220,7 +220,7 @@ class TestMigrateV5ToV6:
         database = db_mod.connect(db_path)
 
         version = database.conn.execute("SELECT version FROM schema_version").fetchone()
-        assert version[0] == db_mod.SCHEMA_VERSION == 6
+        assert version[0] == db_mod.SCHEMA_VERSION == 7
         assert database.migrated_from == 5
         cols = {
             row[1]

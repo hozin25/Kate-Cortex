@@ -123,6 +123,7 @@ def _include_routers(app: FastAPI) -> None:
         auth,
         chat,
         collections,
+        consolidate,
         embeddings,
         entries,
         health,
@@ -144,6 +145,7 @@ def _include_routers(app: FastAPI) -> None:
     app.include_router(embeddings.router, prefix="/api")
     app.include_router(mcp.router, prefix="/api")
     app.include_router(importer.router, prefix="/api")
+    app.include_router(consolidate.router, prefix="/api")
     app.include_router(attachments.router, prefix="/api")
     app.include_router(trash.router, prefix="/api")
 

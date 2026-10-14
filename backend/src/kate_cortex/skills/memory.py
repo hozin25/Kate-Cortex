@@ -6,7 +6,7 @@ save_memory 是自动路径（append-only）：模型判断对话中出现耐久
 话题空间的场景词。
 """
 
-from ..chat.memory import MEMORY_COLLECTION, recall as recall_memories
+from ..chat.memory import MEMORY_COLLECTION, log_memory_hits, recall as recall_memories
 
 _SAVE_PARAMS = {
     "type": "object",
@@ -161,6 +161,8 @@ def _duplicate_hint(storage, args: dict, keywords: list[str]) -> dict | None:
 
 def recall_memory(storage, args: dict) -> dict:
     hits = recall_memories(storage, args.get("keywords") or [])
+    if hits:
+        log_memory_hits(storage, hits, "recall")
     return {
         "query": args.get("query", ""),
         "memories": [

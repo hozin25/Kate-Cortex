@@ -12,7 +12,7 @@ from ..attachments import (
     to_data_url,
 )
 from ..chat.agent import run_agent_chat, sse as sse_event
-from ..chat.memory import resident_memories
+from ..chat.memory import log_memory_hits, resident_memories
 from ..chat.rag import retrieve, user_profile
 from ..chat.service import SessionNotFound
 from ..chat.summarizer import KEEP_ROUNDS, ensure_summary
@@ -332,6 +332,8 @@ def _stream_response(
         memories = (
             resident_memories(get_services(request).storage) if memory_enabled else []
         )
+        if memories:
+            log_memory_hits(get_services(request).storage, memories, "resident")
         # 逐个服务拉工具表（带 mcp__<id>__ 前缀）；失败的服务降级并合并成一条通知
         mcp = McpContext.load(get_services(request).settings_service)
         if mcp.failures:

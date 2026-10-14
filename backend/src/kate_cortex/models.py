@@ -242,6 +242,47 @@ class EnrichOut(BaseModel):
     skipped: list[str]
 
 
+# ── 记忆巩固（CONSOLIDATE_PLAN.md）──
+
+
+class ConsolidateRunIn(BaseModel):
+    limit: int = Field(default=6, ge=1, le=12)
+
+
+class ProposalAcceptIn(BaseModel):
+    """conflict 提案必填（保留 a=较早 / b=较晚）；其余类型忽略"""
+
+    keep: Literal["a", "b"] | None = None
+
+
+class ProposalEntryOut(BaseModel):
+    id: str
+    title: str
+    content: str
+    created_at: str
+
+
+class ProposalOut(BaseModel):
+    id: str
+    kind: Literal["conflict", "profile_update", "profile_create"]
+    created_at: str
+    pair: str | None = None
+    a: ProposalEntryOut | None = None
+    b: ProposalEntryOut | None = None
+    target_id: str | None = None
+    title: str | None = None
+    content: str | None = None
+    reason: str = ""
+
+
+class ConsolidateStatusOut(BaseModel):
+    consolidated_at: str | None
+    report: dict | None
+    proposals: list[ProposalOut]
+    candidates: int
+    vector_available: bool
+
+
 class EmbeddingStatusOut(BaseModel):
     available: bool
     indexed: int
