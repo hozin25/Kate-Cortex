@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, shell } from 'electron'
+import { app, BrowserWindow, dialog, globalShortcut, shell } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -6,6 +6,8 @@ import { startSidecar, type SidecarHandle } from './sidecar'
 import { scheduleUpdateCheck } from './update-check'
 
 let sidecar: SidecarHandle | null = null
+let captureWindow: BrowserWindow | null = null
+let quitting = false
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -40,6 +42,63 @@ function createWindow(): void {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+  }
+
+  // 主窗口关闭 → 销毁速记窗，让 window-all-closed 正常触发退出
+  // （速记窗常驻隐藏，否则应用会隐形驻留）
+  mainWindow.on('closed', () => {
+    if (captureWindow && !captureWindow.isDestroyed()) captureWindow.destroy()
+    captureWindow = null
+  })
+}
+
+// ── 全局速记窗（CAPTURE_PLAN.md §2）：热键唤起的无边框小窗，加载 #/capture ──
+
+function createCaptureWindow(): void {
+  captureWindow = new BrowserWindow({
+    width: 460,
+    height: 360,
+    show: false,
+    frame: false,
+    resizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: false,
+      additionalArguments: [
+        `--kate-port=${sidecar?.port ?? 1738}`,
+        `--kate-token=${sidecar?.token ?? ''}`
+      ]
+    }
+  })
+  // 「关闭」= 隐藏：热键随时再唤起；应用退出时由 quitting 放行
+  captureWindow.on('close', (event) => {
+    if (!quitting) {
+      event.preventDefault()
+      captureWindow?.hide()
+    }
+  })
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    void captureWindow.loadURL(`${process.env['ELECTRON_RENDERER_URL']}#/capture`)
+  } else {
+    void captureWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      hash: 'capture'
+    })
+  }
+}
+
+function toggleCaptureWindow(): void {
+  if (!captureWindow || captureWindow.isDestroyed()) createCaptureWindow()
+  const win = captureWindow
+  if (!win) return
+  if (win.isVisible() && win.isFocused()) {
+    win.hide()
+  } else {
+    win.center()
+    win.show()
+    win.focus()
   }
 }
 
@@ -77,6 +136,12 @@ app.whenReady().then(async () => {
 
   createWindow()
 
+  // 全局速记热键（CAPTURE_PLAN.md §2）；被占用时降级为仅应用内可用
+  createCaptureWindow()
+  if (!globalShortcut.register('CommandOrControl+Shift+K', toggleCaptureWindow)) {
+    console.warn('全局快捷键 Ctrl+Shift+K 注册失败（可能被其他应用占用），速记窗仅可从应用内唤起')
+  }
+
   // 启动 10s 后做一次轻量更新检查（不阻塞首屏；失败静默）
   scheduleUpdateCheck()
 
@@ -91,8 +156,10 @@ app.on('window-all-closed', () => {
   }
 })
 
-// 退出清理：树杀后端（先等它善终，最多 5s）
+// 退出清理：注销全局热键；树杀后端（先等它善终，最多 5s）
 app.on('will-quit', (event) => {
+  quitting = true
+  globalShortcut.unregisterAll()
   if (!sidecar) return
   event.preventDefault()
   const handle = sidecar

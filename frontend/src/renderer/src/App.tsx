@@ -10,6 +10,7 @@ import {
 } from 'react-router-dom'
 import { Brain, Library, MessagesSquare, Settings, X } from 'lucide-react'
 import { ChatPage } from '@renderer/pages/ChatPage'
+import { CapturePage } from '@renderer/pages/CapturePage'
 import { LibraryPage } from '@renderer/pages/LibraryPage'
 import { MemoriesPage } from '@renderer/pages/MemoriesPage'
 import { TrashPage } from '@renderer/pages/TrashPage'
@@ -39,10 +40,29 @@ const NAV_ITEMS = [
 export function App(): React.JSX.Element {
   return (
     <HashRouter>
+      <AppRouter />
+    </HashRouter>
+  )
+}
+
+/** 速记窗走无壳分支（#/capture 无侧栏无登录门卫），其余路径进正常应用壳 */
+function AppRouter(): React.JSX.Element {
+  const location = useLocation()
+  if (location.pathname === '/capture') {
+    return (
+      <>
+        <div className="space-bg" />
+        <CapturePage />
+        <ToastHost />
+      </>
+    )
+  }
+  return (
+    <>
       <div className="space-bg" />
       <AuthGate />
       <ToastHost />
-    </HashRouter>
+    </>
   )
 }
 
