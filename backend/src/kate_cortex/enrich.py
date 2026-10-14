@@ -94,80 +94,92 @@ def enrich_batch(storage, provider, limit: int = 8) -> EnrichBatchResult:
         except Exception as exc:
             result.skipped.append(f"{entry_id}：条目文件缺失（{exc}）")
             continue
-
-        need_keywords = not entry.keywords
-        need_importance = entry.importance is None
-        need_collection = not entry.collections
-        prompt = _build_prompt(
-            entry,
-            need_keywords,
-            need_importance,
-            need_collection,
-            [name for name, _count in storage.list_collections()],
-        )
-        try:
-            output = _call_llm(provider, prompt)
-        except Exception as exc:
-            raise EnrichError(f"LLM 调用失败：{exc}") from exc
-
-        keywords: list[str] | None = None
-        importance: int | None = None
-        collection: str | None = None
-        pending_skip: list[str] = []
-        try:
-            data = _parse_llm_json(output)
-        except (ValueError, json.JSONDecodeError) as exc:
-            result.skipped.append(f"{entry.slug}：LLM 输出无法解析（{exc}）")
+        item, reason = enrich_one(storage, provider, entry)
+        if item is None:
+            result.skipped.append(f"{entry.slug}：{reason}")
             continue
-        if need_keywords:
-            try:
-                keywords = _clean_keywords(data.get("keywords"))
-            except ValueError:
-                pending_skip.append("keywords 无法解析")
-        if need_importance:
-            try:
-                importance = _clean_importance(data.get("importance"))
-            except (TypeError, ValueError):
-                pending_skip.append("importance 无法解析")
-        if need_collection:
-            collection = _clean_collection(data.get("collection"))
-
-        update_kwargs: dict = {}
-        if keywords is not None:
-            update_kwargs["keywords"] = keywords
-        if importance is not None:
-            update_kwargs["importance"] = importance
-        if collection and need_collection:
-            # 只有无合集条目才采纳建议；已有 tags 的条目合集不动（tags 已是
-            # 用户的组织意图，避免 LLM 噪声合集覆盖）
-            update_kwargs["collections"] = [collection]
-        if update_kwargs:
-            try:
-                storage.update_entry(entry.id, **update_kwargs)
-            except Exception as exc:
-                result.skipped.append(f"{entry.slug}：写回失败（{exc}）")
-                continue
-
-        # 任一请求字段仍缺失（如 importance 解析失败）→ 记 skipped 待重试；
-        # 已写回的部分保留（下批只补剩下的）
-        if pending_skip:
-            result.skipped.append(f"{entry.slug}：{'、'.join(pending_skip)}")
-            continue
-
-        result.enriched.append(
-            EnrichedItem(
-                entry_id=entry.id,
-                title=entry.title,
-                keywords=keywords if keywords is not None else entry.keywords,
-                importance=importance if importance is not None else entry.importance,
-                collection=collection,
-                duplicates=_find_duplicates(storage, entry),
-            )
-        )
+        result.enriched.append(item)
         result.processed += 1
 
     result.remaining = pending_count(storage)
     return result
+
+
+def enrich_one(storage, provider, entry) -> tuple[EnrichedItem | None, str | None]:
+    """加工单条：补齐缺失的 keywords/importance/合集并标记疑似重复。
+
+    返回 (结果, 跳过原因)——provider 失败向上抛 EnrichError（批量场景中止
+    整批、capture 场景降级为未加工）；输出不可用返回 (None, 原因) 可重试，
+    已写入的部分保留。"""
+    need_keywords = not entry.keywords
+    need_importance = entry.importance is None
+    need_collection = not entry.collections
+    prompt = _build_prompt(
+        entry,
+        need_keywords,
+        need_importance,
+        need_collection,
+        [name for name, _count in storage.list_collections()],
+    )
+    try:
+        output = _call_llm(provider, prompt)
+    except EnrichError:
+        raise
+    except Exception as exc:
+        raise EnrichError(f"LLM 调用失败：{exc}") from exc
+
+    keywords: list[str] | None = None
+    importance: int | None = None
+    collection: str | None = None
+    pending_skip: list[str] = []
+    try:
+        data = _parse_llm_json(output)
+    except (ValueError, json.JSONDecodeError) as exc:
+        return None, f"LLM 输出无法解析（{exc}）"
+    if need_keywords:
+        try:
+            keywords = _clean_keywords(data.get("keywords"))
+        except ValueError:
+            pending_skip.append("keywords 无法解析")
+    if need_importance:
+        try:
+            importance = _clean_importance(data.get("importance"))
+        except (TypeError, ValueError):
+            pending_skip.append("importance 无法解析")
+    if need_collection:
+        collection = _clean_collection(data.get("collection"))
+
+    update_kwargs: dict = {}
+    if keywords is not None:
+        update_kwargs["keywords"] = keywords
+    if importance is not None:
+        update_kwargs["importance"] = importance
+    if collection and need_collection:
+        # 只有无合集条目才采纳建议；已有 tags 的条目合集不动（tags 已是
+        # 用户的组织意图，避免 LLM 噪声合集覆盖）
+        update_kwargs["collections"] = [collection]
+    if update_kwargs:
+        try:
+            storage.update_entry(entry.id, **update_kwargs)
+        except Exception as exc:
+            return None, f"写回失败（{exc}）"
+
+    # 任一请求字段仍缺失（如 importance 解析失败）→ 记 skipped 待重试；
+    # 已写回的部分保留（下批只补剩下的）
+    if pending_skip:
+        return None, "、".join(pending_skip)
+
+    return (
+        EnrichedItem(
+            entry_id=entry.id,
+            title=entry.title,
+            keywords=keywords if keywords is not None else entry.keywords,
+            importance=importance if importance is not None else entry.importance,
+            collection=collection,
+            duplicates=_find_duplicates(storage, entry),
+        ),
+        None,
+    )
 
 
 def _build_prompt(

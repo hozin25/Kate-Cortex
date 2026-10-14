@@ -301,6 +301,24 @@ class BriefingOut(BaseModel):
     cached: bool = False
 
 
+# ── 全局速记（CAPTURE_PLAN.md）──
+
+
+class CaptureIn(BaseModel):
+    text: str = Field(min_length=1, max_length=20000)
+
+
+class CaptureOut(BaseModel):
+    entry_id: str
+    slug: str
+    title: str
+    enriched: bool
+    keywords: list[str] = Field(default_factory=list)
+    importance: int | None = None
+    collection: str | None = None
+    hint: str | None = None  # enriched=false 时的原因（如未配 key）
+
+
 class EmbeddingStatusOut(BaseModel):
     available: bool
     indexed: int
