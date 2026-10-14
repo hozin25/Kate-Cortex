@@ -283,6 +283,24 @@ class ConsolidateStatusOut(BaseModel):
     vector_available: bool
 
 
+# ── 每日简报（BRIEFING_PLAN.md）──
+
+BriefingKind = Literal["due", "followup", "tip"]
+
+
+class BriefingItemOut(BaseModel):
+    kind: BriefingKind
+    text: str
+    entry_id: str | None = None
+
+
+class BriefingOut(BaseModel):
+    date: str
+    greeting: str
+    items: list[BriefingItemOut]
+    cached: bool = False
+
+
 class EmbeddingStatusOut(BaseModel):
     available: bool
     indexed: int
