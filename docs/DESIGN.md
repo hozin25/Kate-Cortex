@@ -305,7 +305,7 @@ DELETE /api/chat/sessions/:id/messages/:mid                 删除单条消息�
 
 # 设置
 GET    /api/settings
-PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径 / export_dir
+PUT    /api/settings                    provider keys / 默认模型 / RAG 默认 / vault 路径 / export_dir / import_enrich
 POST   /api/providers/test              {provider} 连通性测试
 
 # MCP 服务（多服务接入，2026-09-11 增补；状态缓存供设置页展示可用/不可用）
@@ -322,6 +322,16 @@ POST   /api/agents                      {name, description, prompt, provider?, m
                                         重名 409；provider/model 成对可选（不填跟随会话模型）
 PATCH  /api/agents/:id                  部分更新（含 enabled 启停）
 DELETE /api/agents/:id                  移除（历史消息的 /名称 前缀回落默认 Kate）
+
+# 导入与加工（2026-10-14 增补 enrich，详见 IMPORT_ENRICH_PLAN.md）
+POST   /api/import/vault                Kate vault 合并迁移（frontmatter 兼容、id 去重、key 只补不覆盖）
+POST   /api/import/obsidian             Obsidian 导入（tags→合集、[[]] 重写、附件拷贝）
+POST   /api/import/enrich               分批加工 import 条目（LLM 补 keywords/importance/合集
+                                        + 向量查重标记疑似重复，≥0.80 只标记不合并）。
+                                        拉取式：{limit≤24} 每次一批，前端循环调用直到 done；
+                                        只碰 source=import 且缺字段的条目，已有值不覆盖；
+                                        provider 走默认会话模型，失败 400 前端停止循环。
+                                        开关 settings["import_enrich"]（默认开，只控前端自动跑）
 
 # 系统
 POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）

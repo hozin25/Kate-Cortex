@@ -82,6 +82,12 @@ Kate 的强项（存储与召回：FTS+向量 RRF、importance/keywords 打分�
 
 ## 4. P0：记忆加工流水线（导入 LLM 加工）
 
+> **状态：已实施（2026-10-14）**，细化设计与实施记录见 `IMPORT_ENRICH_PLAN.md`。
+> 一处设计演进：后台加工改为**拉取式分批端点** `POST /api/import/enrich`
+> （前端循环调用直到完成），规避 sidecar 共享 sqlite 连接的后台线程并发风险
+> （有 fae47bf 前科）；「导入后自动加工」相应变为前端行为，settings
+> `import_enrich` 开关（默认开）只控制导入完成后是否自动开跑。
+
 **目标**：导入的记忆不再是「死记忆」。现状 `importer.py` 的 import_vault/import_obsidian
 原样搬运 md，导进来的条目没有 keywords/importance/合集归属，检索打分吃亏。
 
