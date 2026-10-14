@@ -10,6 +10,7 @@ import {
   Plug,
   Plus,
   Settings2,
+  Sparkles,
   Trash2,
   UserRound
 } from 'lucide-react'
@@ -24,6 +25,7 @@ import { api } from '@renderer/api/client'
 import { cn, maskSecretUrl } from '@renderer/lib/utils'
 import { isElectron } from '@renderer/lib/runtime'
 import { PROVIDERS } from '@renderer/lib/providers'
+import { runEnrichLoop } from '@renderer/lib/importEnrich'
 import { getTheme, setTheme, type Theme } from '@renderer/lib/theme'
 import type {
   AppSettings,
@@ -126,6 +128,8 @@ export function SettingsPage(): React.JSX.Element {
     'obsidian-preview' | 'obsidian-run' | 'vault-preview' | 'vault-run' | null
   >(null)
   const [importReport, setImportReport] = useState<Record<string, unknown> | null>(null)
+  const [enriching, setEnriching] = useState(false)
+  const [enrichProgress, setEnrichProgress] = useState<{ done: number; total: number } | null>(null)
 
   const runImport = (kind: 'obsidian' | 'vault', dryRun: boolean): Promise<void> => {
     const source_dir = (kind === 'obsidian' ? draftObsidianDir : draftVaultDir).trim()
@@ -141,12 +145,33 @@ export function SettingsPage(): React.JSX.Element {
             `导入完成：${(report.imported as number) ?? 0} 条条目` +
               (attachments > 0 ? `、${attachments} 个附件` : '')
           )
+          if (settings?.import_enrich && (report.imported as number) > 0) {
+            toast.info('开始自动加工导入条目（补关键词/重要度/合集）…')
+            void runEnrich()
+          }
         } else {
           toast.info('预览完成，报告见下方')
         }
       })
       .catch((err) => toast.error(err instanceof Error ? err.message : '导入失败'))
       .finally(() => setImporting(null))
+  }
+
+  const runEnrich = async (): Promise<void> => {
+    setEnriching(true)
+    setEnrichProgress(null)
+    try {
+      const result = await runEnrichLoop(api, { onProgress: setEnrichProgress })
+      const parts = [`已加工 ${result.processed} 条`]
+      if (result.duplicates > 0) parts.push(`疑似重复 ${result.duplicates} 处`)
+      if (result.skipped > 0) parts.push(`跳过 ${result.skipped} 条`)
+      toast.success(`加工完成：${parts.join('，')}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '自动加工失败')
+    } finally {
+      setEnriching(false)
+      setEnrichProgress(null)
+    }
   }
 
   const handleTheme = (next: Theme): void => {
@@ -751,6 +776,31 @@ export function SettingsPage(): React.JSX.Element {
               <p className="mt-1 text-[11px] leading-4 text-zinc-600">
                 条目/合集/双链/附件合并拷贝，同名冲突自动改名；API Key 只补缺失不覆盖。
               </p>
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-3">
+              <div className="min-w-0">
+                <div className="text-[13px] text-zinc-300">导入后自动加工</div>
+                <p className="mt-0.5 text-[11px] leading-4 text-zinc-600">
+                  用当前默认模型为 import 来源条目补关键词/重要度/合集，并标记疑似重复；
+                  已有字段不覆盖，失败的可随时重跑。
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  onClick={() => void runEnrich()}
+                  disabled={enriching || importing !== null}
+                  className="flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-zinc-300 transition hover:text-zinc-100 disabled:opacity-40"
+                >
+                  {enriching ? <Spinner className="size-3.5" /> : <Sparkles className="size-3.5" />}
+                  {enriching && enrichProgress
+                    ? `加工中 ${enrichProgress.done}/${enrichProgress.total}`
+                    : '补加工'}
+                </button>
+                <ToggleSwitch
+                  checked={settings.import_enrich}
+                  onChange={(v) => void handleSave({ import_enrich: v })}
+                />
+              </div>
             </div>
             {importReport && (
               <pre className="max-h-56 overflow-auto rounded-xl bg-white/[0.04] p-3 font-mono text-[11px] leading-5 text-zinc-300">

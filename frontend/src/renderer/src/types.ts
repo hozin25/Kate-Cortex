@@ -161,6 +161,7 @@ export interface AppSettings {
   embedding_api_key: string | null
   mcp_servers: McpServer[]
   export_dir: string | null
+  import_enrich: boolean
 }
 
 export interface EmbeddingStatus {
