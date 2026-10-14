@@ -332,6 +332,30 @@ POST   /api/import/enrich               分批加工 import 条目（LLM 补 key
                                         只碰 source=import 且缺字段的条目，已有值不覆盖；
                                         provider 走默认会话模型，失败 400 前端停止循环。
                                         开关 settings["import_enrich"]（默认开，只控前端自动跑）
+POST   /api/capture                     全局速记（CAPTURE_PLAN.md）：正文即记忆
+                                        （manual，首行截 40 字为标题）+ 内联单条加工；
+                                        加工 best-effort——缺 key/输出异常照常入库，
+                                        enriched=false + hint 如实说明
+
+# 记忆巩固（2026-10-14 增补，详见 CONSOLIDATE_PLAN.md；db v7 memory_hits 召回埋点）
+GET    /api/consolidate/status          {consolidated_at, report, proposals,
+                                        candidates, vector_available}
+POST   /api/consolidate/run             一轮整理（{limit≤12} 分批拉取，前端循环）：
+                                        规则引擎升降重要度（>90d cap2/>180d cap1）+
+                                        归档（久未召回且调整前 importance≤2 →「归档」合集）；
+                                        LLM 重复判定——duplicate/update 自动合并（保留较早、
+                                        较新进 .trash 可撤销）、conflict 走提案（保留较新/较旧
+                                        用户定）、distinct 缓存；画像维护全提案制（个人信息
+                                        永不自动改）。只动「记忆/个人信息」两个系统合集
+POST   /api/consolidate/proposals/:id/accept   {keep?: "a"|"b"} 按提案类型分发
+DELETE /api/consolidate/proposals/:id   忽略提案
+POST   /api/consolidate/undo/:entry_id  restore_entry 恢复被合并条目
+
+# 每日简报（2026-10-14 增补，详见 BRIEFING_PLAN.md）
+GET    /api/briefing?refresh=false      「记忆 top30+个人信息前6」→ 当日简报
+                                        （due/followup/tip，只能引用给定条目、宁缺勿编）；
+                                        settings briefing_cache 同日缓存；无记忆/记忆关闭
+                                        走静态问候不调 LLM；provider 失败 400（前端静默降级）
 
 # 系统
 POST   /api/sync                        重新索引（FTS 重灌；向量只清不嵌）
@@ -454,7 +478,8 @@ providers/
 **system prompt 骨架**（`chat/prompts.py`）：
 
 ```
-你是 Kate，用户的个人知识助手。
+你是 Kate，用户的私人管家——像贾维斯一样可靠、主动、有分寸（2026-10-14
+ P2 升级：涉及健康/日程/偏好主动关联记忆，发现被忽略的事主动提醒）。
 [人设与回答风格]
 [当前角色：{name}（agent 角色段，2026-09-13 增补）——/名称 引用时注入在
  人设之后、工具规则之前：人格可被覆盖，工具能力不裁剪]
