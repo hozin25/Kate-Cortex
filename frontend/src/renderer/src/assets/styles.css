@@ -393,3 +393,43 @@ html[data-theme='light'] option {
 .prose-kate .shiki {
   @apply rounded-xl;
 }
+
+/* ── 亮色模式下的 markdown 正文：prose-kate 用 @apply 把暗色字色内联进了类本身，
+   上面的「html[data-theme='light'] .text-zinc-xxx」工具类重映射匹配不到，
+   必须按选择器单独覆盖 ── */
+html[data-theme='light'] .prose-kate {
+  color: oklch(0.2 0.01 280);
+}
+html[data-theme='light'] .prose-kate h1,
+html[data-theme='light'] .prose-kate h2,
+html[data-theme='light'] .prose-kate h3 {
+  color: oklch(0.15 0.01 280);
+}
+html[data-theme='light'] .prose-kate blockquote {
+  color: oklch(0.42 0.01 280);
+}
+html[data-theme='light'] .prose-kate th {
+  color: oklch(0.18 0.01 280);
+  border-color: rgb(15 15 25 / 0.2);
+}
+html[data-theme='light'] .prose-kate td {
+  border-color: rgb(15 15 25 / 0.1);
+}
+html[data-theme='light'] .prose-kate hr {
+  border-color: rgb(15 15 25 / 0.12);
+}
+html[data-theme='light'] .prose-kate a {
+  color: oklch(0.5 0.11 210);
+  text-decoration-color: oklch(0.5 0.11 210 / 0.4);
+}
+html[data-theme='light'] .prose-kate a:hover {
+  text-decoration-color: oklch(0.5 0.11 210);
+}
+html[data-theme='light'] .prose-kate code:not(pre code) {
+  background-color: rgb(20 20 40 / 0.07);
+  color: oklch(0.5 0.11 210);
+}
+html[data-theme='light'] .prose-kate ul ::marker,
+html[data-theme='light'] .prose-kate ol ::marker {
+  color: oklch(0.45 0.15 270);
+}
