@@ -10,7 +10,7 @@ import { api } from '@renderer/api/client'
 import { Spinner } from '@renderer/components/common/Badges'
 import { EmptyState } from '@renderer/components/common/EmptyState'
 import { cn } from '@renderer/lib/utils'
-import { collectionColor, pointColor, primaryCollection } from './pointColors'
+import { collectionColor, pointColor } from './pointColors'
 import type { Projection, ProjectionPoint } from '@renderer/types'
 
 const METHOD_LABELS: Record<string, string> = {
@@ -154,27 +154,24 @@ export function VectorGraph(): React.JSX.Element {
   const allNames = useMemo(() => {
     const names = new Set<string>()
     for (const p of projection?.points ?? []) {
-      const primary = primaryCollection(p.collections)
-      if (primary) names.add(primary)
+      for (const c of p.collections) if (c) names.add(c)
     }
     return [...names]
   }, [projection])
 
+  // 多合集条目属于每一行：任一所属合集被隐藏即隐藏该点
   const visible = useMemo(
-    () =>
-      (projection?.points ?? []).filter((p) => {
-        const primary = primaryCollection(p.collections)
-        return primary === null || !hidden.has(primary)
-      }),
+    () => (projection?.points ?? []).filter((p) => !p.collections.some((c) => hidden.has(c))),
     [projection, hidden]
   )
 
+  // 图例按「合集成员数」统计——多合集条目在每个所属合集下都计数，
+  // 否则新合集只含多合集条目时永远不会出现在图例里
   const legend = useMemo(() => {
     const counts = new Map<string, number>()
     for (const p of projection?.points ?? []) {
-      const primary = primaryCollection(p.collections)
-      const key = primary ?? ''
-      counts.set(key, (counts.get(key) ?? 0) + 1)
+      if (p.collections.length === 0) counts.set('', (counts.get('') ?? 0) + 1)
+      for (const c of p.collections) counts.set(c, (counts.get(c) ?? 0) + 1)
     }
     return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))
   }, [projection])
