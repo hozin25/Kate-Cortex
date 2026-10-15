@@ -11,7 +11,9 @@ import json
 import logging
 from dataclasses import dataclass, field
 
+from .chat.memory import MEMORY_COLLECTION
 from .providers.base import Done, TextDelta
+from .storage import PROFILE_COLLECTION
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,10 @@ DUPLICATE_SIMILARITY = 0.80
 CONTENT_TRUNCATE = 1200  # 提示词里的正文截断：关键词提取够用
 DEDUP_QUERY_TRUNCATE = 400
 MAX_KEYWORDS = 8
+
+# 系统合集不参与自动归档建议：「记忆」是自动记忆的生活事实（长文混入会污染
+# 常驻注入），「个人信息」是档案核心认知——两者只能由 save_memory/用户手动管理
+NO_SUGGEST_COLLECTIONS = frozenset({MEMORY_COLLECTION, PROFILE_COLLECTION})
 
 # 幂等选取：已有哪个就补哪个，绝不覆盖已有值（手动/chat 来源不碰——
 # 用户手写的空字段是「没填」不是「要补」）
@@ -119,7 +125,11 @@ def enrich_one(storage, provider, entry) -> tuple[EnrichedItem | None, str | Non
         need_keywords,
         need_importance,
         need_collection,
-        [name for name, _count in storage.list_collections()],
+        [
+            name
+            for name, _count in storage.list_collections()
+            if name not in NO_SUGGEST_COLLECTIONS
+        ],
     )
     try:
         output = _call_llm(provider, prompt)
@@ -207,7 +217,8 @@ def _build_prompt(
         format_fields.append('"collection": "…"')
         requirements.append(
             "- collection：从现有合集列表中选一个最贴题的；"
-            "确实都不合适才起新名（≤6 字）；拿不准给空字符串"
+            "确实都不合适才起新名（≤6 字）；拿不准给空字符串；"
+            "「记忆」「个人信息」是系统合集，严禁选择"
         )
     return (
         "你在给个人知识库的一条导入条目生成检索元数据。只输出一个 JSON 对象，"

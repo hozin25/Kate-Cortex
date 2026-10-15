@@ -84,6 +84,27 @@ class TestSelection:
             item.entry_id for item in [*batch1.enriched, *batch2.enriched]
         }
 
+    def test_system_collections_excluded_from_suggestion(self, storage):
+        # 「记忆」已存在（生活记忆合集）也不能出现在建议列表里——
+        # 知识文档混进记忆合集会污染常驻注入
+        storage.create_entry(
+            title="已有记忆",
+            source="chat",
+            content="x",
+            collections=["记忆"],
+            keywords=["x"],
+            importance=3,
+        )
+        entry = _import_entry(storage)
+        fake = FakeProvider(rounds=[_json_round(collection="旅行")])
+
+        enrich_batch(storage, fake, limit=8)
+
+        prompt = fake.calls[0]["messages"][0]["content"]
+        assert "现有合集列表：（空）" in prompt  # 「记忆」被过滤后列表为空
+        assert "严禁选择" in prompt
+        assert storage.get_entry(entry.id).collections == ["旅行"]
+
     def test_md_file_updated(self, storage, env):
         entry = _import_entry(storage)
         enrich_batch(storage, FakeProvider(rounds=[_json_round(importance=4)]), limit=8)
