@@ -140,12 +140,16 @@ export function SettingsPage(): React.JSX.Element {
       .then((report) => {
         setImportReport(report)
         if (!dryRun) {
+          const imported = (report.imported as number) ?? 0
+          const skipped = (report.skipped as string[]) ?? []
           const attachments = (report.attachments as number) ?? 0
-          toast.success(
-            `导入完成：${(report.imported as number) ?? 0} 条条目` +
-              (attachments > 0 ? `、${attachments} 个附件` : '')
-          )
-          if (settings?.import_enrich && (report.imported as number) > 0) {
+          const parts = [`导入 ${imported} 条条目`]
+          if (attachments > 0) parts.push(`${attachments} 个附件`)
+          if (skipped.length > 0) parts.push(`跳过 ${skipped.length} 条（原因见下方报告）`)
+          imported + skipped.length > 0
+            ? toast.success(parts.join('，'))
+            : toast.info('没有发现可导入的 .md 文件，请确认路径指向包含 md 的文件夹')
+          if (settings?.import_enrich && imported > 0) {
             toast.info('开始自动加工导入条目（补关键词/重要度/合集）…')
             void runEnrich()
           }
