@@ -19,11 +19,18 @@ class ToolCallDelta:
 
 
 @dataclass
+class ReasoningDelta:
+    """模型的思考过程增量（GLM reasoning_content / Anthropic thinking_delta）"""
+
+    text: str
+
+
+@dataclass
 class Done:
     finish_reason: str | None = None
 
 
-StreamEvent = TextDelta | ToolCallDelta | Done
+StreamEvent = TextDelta | ReasoningDelta | ToolCallDelta | Done
 
 
 class ProviderError(Exception):
@@ -39,9 +46,15 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def chat_stream(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        thinking: bool | None = None,
     ) -> Iterator[StreamEvent]:
-        """流式对话。yield 归一化的 StreamEvent，最后必有 Done。"""
+        """流式对话。yield 归一化的 StreamEvent，最后必有 Done。
+
+        thinking: None=服务商默认；True/False=按轮强制开/关思考。
+        不支持该参数的服务商实现应忽略此值。"""
 
 
 @dataclass

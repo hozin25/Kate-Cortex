@@ -13,7 +13,7 @@ from typing import Iterator
 
 import anthropic
 
-from .base import BaseProvider, Done, StreamEvent, TextDelta, ToolCallDelta
+from .base import BaseProvider, Done, ReasoningDelta, StreamEvent, TextDelta, ToolCallDelta
 
 _DATA_URL_RE = re.compile(r"^data:(image/[\w.+-]+);base64,(.+)$", re.DOTALL)
 
@@ -153,7 +153,10 @@ class AnthropicCompatProvider(BaseProvider):
         )
 
     def chat_stream(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        thinking: bool | None = None,
     ) -> Iterator[StreamEvent]:
         system, converted = to_anthropic_messages(messages)
         kwargs: dict = {
@@ -161,9 +164,10 @@ class AnthropicCompatProvider(BaseProvider):
             "max_tokens": self.max_tokens,
             "messages": converted,
             "stream": True,
-            # glm-5.3 等推理模型默认输出 thinking 块：聊天场景直接关闭，
-            # 避免 UI 长时间无正文且烧输出 token
-            "thinking": {"type": "disabled"},
+            # glm-5.3 等推理模型默认输出 thinking 块：聊天场景默认关闭，
+            # 避免 UI 长时间无正文且烧输出 token；thinking=True 时开启
+            # 并把 thinking_delta 以 ReasoningDelta 回传给前端展示
+            "thinking": {"type": "enabled"} if thinking else {"type": "disabled"},
         }
         if system:
             kwargs["system"] = system
@@ -192,6 +196,9 @@ class AnthropicCompatProvider(BaseProvider):
                         yield ToolCallDelta(
                             index=event.index, arguments=delta.partial_json
                         )
+                    elif dtype == "thinking_delta":
+                        if getattr(delta, "thinking", ""):
+                            yield ReasoningDelta(delta.thinking)
                     # thinking_delta / signature_delta：关闭思考后不出现，防御性跳过
                 elif etype == "message_delta":
                     raw = event.delta.stop_reason

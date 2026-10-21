@@ -172,9 +172,9 @@ class TestMultimodalChatApi:
         captured: list[list[dict]] = []
 
         class CapturingProvider(FakeProvider):
-            def chat_stream(self, messages, tools=None):
+            def chat_stream(self, messages, tools=None, thinking=None):
                 captured.append(messages)
-                return super().chat_stream(messages, tools)
+                return super().chat_stream(messages, tools, thinking)
 
         client.app.state.provider_factory = lambda name, model=None: CapturingProvider(
             [[TextDelta("这是截图里的报错。"), Done("stop")]]
@@ -212,9 +212,9 @@ class TestMultimodalChatApi:
         captured: list[list[dict]] = []
 
         class CapturingProvider(FakeProvider):
-            def chat_stream(self, messages, tools=None):
+            def chat_stream(self, messages, tools=None, thinking=None):
                 captured.append(messages)
-                return super().chat_stream(messages, tools)
+                return super().chat_stream(messages, tools, thinking)
 
         client.app.state.provider_factory = lambda name, model=None: CapturingProvider(
             [[TextDelta("好的。"), Done("stop")]]
@@ -241,9 +241,9 @@ class TestMultimodalChatApi:
         captured: list[list[dict]] = []
 
         class CapturingProvider(FakeProvider):
-            def chat_stream(self, messages, tools=None):
+            def chat_stream(self, messages, tools=None, thinking=None):
                 captured.append(messages)
-                return super().chat_stream(messages, tools)
+                return super().chat_stream(messages, tools, thinking)
 
         client.app.state.provider_factory = lambda name, model=None: CapturingProvider(
             [[TextDelta("好的。"), Done("stop")]]

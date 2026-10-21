@@ -24,9 +24,12 @@ class FakeProvider(BaseProvider):
         self.calls: list[dict] = []
 
     def chat_stream(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        thinking: bool | None = None,
     ) -> Iterator[StreamEvent]:
-        self.calls.append({"messages": messages, "tools": tools})
+        self.calls.append({"messages": messages, "tools": tools, "thinking": thinking})
         index = min(self._round_index, len(self.rounds) - 1)
         self._round_index += 1
         for item in self.rounds[index]:

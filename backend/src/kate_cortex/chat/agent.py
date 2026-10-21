@@ -4,7 +4,7 @@ import json
 from typing import Iterator
 
 from ..mcp_registry import McpContext
-from ..providers.base import TextDelta, ToolCallAccumulator, ToolCallDelta
+from ..providers.base import ReasoningDelta, TextDelta, ToolCallAccumulator, ToolCallDelta
 from ..skills.export import TOOLS as EXPORT_TOOLS
 from ..skills.export import export_markdown
 from ..skills.knowledge import TOOLS as KNOWLEDGE_TOOLS
@@ -40,6 +40,7 @@ def run_agent_chat(
     mcp: McpContext | None = None,
     export_dir: str | None = None,
     agent: dict | None = None,
+    thinking: bool | None = None,
 ) -> Iterator[str]:
     mcp = mcp or McpContext(_NullSettings())
     system_prompt = build_system_prompt(
@@ -70,9 +71,11 @@ def run_agent_chat(
         accumulator = ToolCallAccumulator()
         try:
             for event in provider.chat_stream(
-                messages, tools=[*base_tools, *mcp.tool_defs()]
+                messages, tools=[*base_tools, *mcp.tool_defs()], thinking=thinking
             ):
-                if isinstance(event, TextDelta):
+                if isinstance(event, ReasoningDelta):
+                    yield sse("reasoning", {"text": event.text})
+                elif isinstance(event, TextDelta):
                     parts.append(event.text)
                     yield sse("delta", {"text": event.text})
                 elif isinstance(event, ToolCallDelta):

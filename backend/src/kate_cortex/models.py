@@ -127,6 +127,7 @@ class ChatRequest(BaseModel):
     content: str = ""  # 图片-only 消息允许空文本（与 images 至少有一）
     images: list[str] = Field(default_factory=list, max_length=4)  # data URL
     rag_enabled: bool | None = None
+    thinking: bool | None = None  # None=服务商默认；True/False 强制开/关（GLM 系生效）
 
 
 class ChatRegenerate(BaseModel):

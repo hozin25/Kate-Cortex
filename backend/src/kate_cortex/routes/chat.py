@@ -188,6 +188,7 @@ def chat(session_id: str, payload: ChatRequest, request: Request):
             agent=agent,
             provider_name=provider_name,
             model_name=model_name,
+            thinking=payload.thinking,
         ),
         media_type="text/event-stream",
     )
@@ -305,6 +306,7 @@ def _stream_response(
     agent: dict | None = None,
     provider_name: str | None = None,
     model_name: str | None = None,
+    thinking: bool | None = None,
 ):
     """chat / regenerate / resend 共用的 SSE 生成器：RAG 检索 → citations →
     agent loop（结束后由 run_agent_chat 落库 assistant 消息）。
@@ -371,6 +373,7 @@ def _stream_response(
             mcp=mcp,
             export_dir=export_dir,
             agent=agent,
+            thinking=thinking,
         )
 
     return generate()

@@ -4,11 +4,14 @@ from typing import Iterator
 
 from openai import OpenAI
 
-from .base import BaseProvider, Done, StreamEvent, TextDelta, ToolCallDelta
+from .base import BaseProvider, Done, ReasoningDelta, StreamEvent, TextDelta, ToolCallDelta
 
 
 class OpenAICompatProvider(BaseProvider):
     base_url: str = ""
+    # 服务商 chat/completions 是否接受 thinking 参数：智谱 GLM 支持，
+    # DeepSeek / 硅基流动 / 魔搭不支持（未知参数可能 400），默认忽略
+    supports_thinking_param = False
 
     def __init__(self, api_key: str, model: str):
         super().__init__(api_key, model)
@@ -31,10 +34,18 @@ class OpenAICompatProvider(BaseProvider):
         return kwargs
 
     def chat_stream(
-        self, messages: list[dict], tools: list[dict] | None = None
+        self,
+        messages: list[dict],
+        tools: list[dict] | None = None,
+        thinking: bool | None = None,
     ) -> Iterator[StreamEvent]:
         client = self._client_factory()
         kwargs = self._request_kwargs(messages, tools)
+        if thinking is not None and self.supports_thinking_param:
+            kwargs["extra_body"] = {
+                **(kwargs.get("extra_body") or {}),
+                "thinking": {"type": "enabled" if thinking else "disabled"},
+            }
 
         finish_reason: str | None = None
         stream = client.chat.completions.create(**kwargs)
@@ -45,6 +56,9 @@ class OpenAICompatProvider(BaseProvider):
             delta = choice.delta
             if delta is None:
                 continue
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                yield ReasoningDelta(reasoning)
             if delta.content:
                 yield TextDelta(delta.content)
             for tool_call in delta.tool_calls or []:

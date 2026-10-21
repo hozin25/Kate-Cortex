@@ -8,6 +8,7 @@ from kate_cortex.providers.anthropic_compat import (
 )
 from kate_cortex.providers.base import (
     Done,
+    ReasoningDelta,
     TextDelta,
     ToolCallAccumulator,
     ToolCallDelta,
@@ -398,7 +399,8 @@ class TestAnthropicStreamNormalization:
 
         events = list(provider.chat_stream([{"role": "user", "content": "hi"}]))
 
-        assert events == [TextDelta("你好"), Done("stop")]
+        # thinking_delta 归一化为 ReasoningDelta（供前端展示思考过程）
+        assert events == [ReasoningDelta("让我想想"), TextDelta("你好"), Done("stop")]
 
     def test_tool_use_stream_accumulates_via_existing_accumulator(self):
         provider = make_anthropic_provider(
